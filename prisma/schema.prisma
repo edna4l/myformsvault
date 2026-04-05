@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum FormStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Lead {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  company   String?
+  teamSize  String?
+  message   String
+  createdAt DateTime @default(now())
+}
+
+model Form {
+  id          String           @id @default(cuid())
+  name        String
+  slug        String           @unique
+  headline    String
+  description String
+  accent      String           @default("#ff7a00")
+  status      FormStatus       @default(DRAFT)
+  fields      Json
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  submissions FormSubmission[]
+}
+
+model FormSubmission {
+  id        String   @id @default(cuid())
+  formId    String
+  fullName  String
+  email     String
+  company   String?
+  website   String?
+  goals     String
+  createdAt DateTime @default(now())
+  form      Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId, createdAt(sort: Desc)])
+}
