@@ -6,8 +6,12 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
+const databaseUrl =
+  process.env.DATABASE_URL ||
+  (process.env.VERCEL ? "file:/tmp/myformsvault.db" : "file:./prisma/dev.db");
+
 const adapter = new PrismaBetterSqlite3({
-  url: process.env.DATABASE_URL || "file:./prisma/dev.db",
+  url: databaseUrl,
 });
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
