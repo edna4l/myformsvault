@@ -104,13 +104,45 @@ export function parseFields(value: Prisma.JsonValue): FormField[] {
     .filter((item): item is FormField => item !== null);
 }
 
-export function getBaseUrl() {
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL;
+function normalizeBaseUrl(value?: string) {
+  if (!value) {
+    return null;
   }
 
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
+  const trimmed = value.trim().replace(/\/+$/g, "");
+
+  if (!trimmed) {
+    return null;
+  }
+
+  return /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+export function getBaseUrl() {
+  const configuredUrl = normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL);
+
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+
+  if (process.env.VERCEL_ENV === "production") {
+    const productionUrl = normalizeBaseUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL);
+
+    if (productionUrl) {
+      return productionUrl;
+    }
+  }
+
+  const branchUrl = normalizeBaseUrl(process.env.VERCEL_BRANCH_URL);
+
+  if (branchUrl) {
+    return branchUrl;
+  }
+
+  const deploymentUrl = normalizeBaseUrl(process.env.VERCEL_URL);
+
+  if (deploymentUrl) {
+    return deploymentUrl;
   }
 
   return "http://localhost:3000";
