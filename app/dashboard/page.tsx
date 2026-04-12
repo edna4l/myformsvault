@@ -30,8 +30,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <span className="eyebrow">Dashboard</span>
             <h1>Your form system is live enough to build on.</h1>
             <p>
-              You now have a real local database, public form routes, and a homepage capture flow.
-              This is a much better first commit than a starter template.
+              You now have a real Supabase-backed database, public form routes, and a homepage
+              capture flow. This is a much better first commit than a starter template.
             </p>
           </div>
           <div className="button-row">

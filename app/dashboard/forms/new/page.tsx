@@ -100,7 +100,7 @@ export default async function NewFormPage({ searchParams }: NewFormPageProps) {
               </div>
               <div>
                 <strong>Stored automatically</strong>
-                <p>Every form and submission is written to the local Prisma database.</p>
+                <p>Every form and submission is written to the shared Supabase-backed database.</p>
               </div>
             </div>
           </aside>

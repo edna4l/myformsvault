@@ -75,9 +75,8 @@ export default async function Home({ searchParams }: HomePageProps) {
             <div className="surface-card offset-card">
               <span className="chip">MVP focus</span>
               <p>
-                We are starting with a local Prisma + SQLite baseline so you can build quickly and
-                push a real app. We can switch the datasource to hosted Postgres before the first
-                serious Vercel data rollout.
+                The app now runs on Prisma backed by Supabase Postgres, so the homepage, dashboard,
+                and public forms all share the same live data foundation.
               </p>
             </div>
           </div>
@@ -117,8 +116,8 @@ export default async function Home({ searchParams }: HomePageProps) {
           <span className="eyebrow">Capture a launch request</span>
           <h2>Start collecting leads on day one.</h2>
           <p>
-            This form writes directly to the local database so the dashboard has something real to
-            show immediately.
+            This form writes straight into the live Supabase-backed datastore so the dashboard can
+            reflect real submissions immediately.
           </p>
         </div>
 
