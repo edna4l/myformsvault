@@ -41,5 +41,8 @@ generated/
 # vercel
 .vercel
 
+# local editor settings
+.vscode/settings.json
+
 # typescript
 *.tsbuildinfo
