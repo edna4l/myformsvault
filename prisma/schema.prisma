@@ -9,13 +9,16 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
+  schemas  = ["myformsvault"]
 }
 
 enum FormStatus {
   DRAFT
   ACTIVE
   ARCHIVED
+
+  @@schema("myformsvault")
 }
 
 model Lead {
@@ -26,6 +29,8 @@ model Lead {
   teamSize  String?
   message   String
   createdAt DateTime @default(now())
+
+  @@schema("myformsvault")
 }
 
 model Form {
@@ -40,6 +45,8 @@ model Form {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   submissions FormSubmission[]
+
+  @@schema("myformsvault")
 }
 
 model FormSubmission {
@@ -54,4 +61,5 @@ model FormSubmission {
   form      Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
 
   @@index([formId, createdAt(sort: Desc)])
+  @@schema("myformsvault")
 }

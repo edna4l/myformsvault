@@ -1,9 +1,9 @@
-import "dotenv/config";
+import { loadEnvConfig } from "@next/env";
 import { defineConfig, env } from "prisma/config";
 
-const databaseUrl =
-  process.env.DATABASE_URL ||
-  (process.env.VERCEL ? "file:/tmp/myformsvault.db" : "file:./prisma/dev.db");
+loadEnvConfig(process.cwd());
+
+const databaseUrl = process.env.DATABASE_URL || process.env.DIRECT_URL;
 
 export default defineConfig({
   schema: "prisma/schema.prisma",

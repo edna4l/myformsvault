@@ -5,7 +5,7 @@ Fresh Next.js baseline for a form product with:
 - branded homepage
 - dashboard
 - public shareable forms
-- Prisma-backed local database for leads and submissions
+- Prisma-backed PostgreSQL data for leads and submissions
 - Supabase browser/server client helpers and session proxy wiring
 
 ## Local development
@@ -16,13 +16,22 @@ Fresh Next.js baseline for a form product with:
 npm install
 ```
 
-2. Create the local database:
+2. Add your Supabase connection strings and public key to `.env.local`.
+
+This app expects:
+
+- `DATABASE_URL` for the pooled runtime connection
+- `DIRECT_URL` for Prisma CLI schema changes
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+3. Push the schema to your `myformsvault` schema in Supabase:
 
 ```bash
 npm run db:setup
 ```
 
-3. Start the app:
+4. Start the app:
 
 ```bash
 npm run dev
@@ -34,11 +43,11 @@ Open `http://localhost:3000`.
 
 The repo now includes:
 
-- `.env.local` for `NEXT_PUBLIC_SUPABASE_URL` and the publishable key
+- `.env.local` for the Supabase URL, public key, and Postgres connection strings
 - browser and server helpers in `utils/supabase/`
 - `proxy.ts` to refresh Supabase sessions on requests
 
-This is the client/auth wiring only. The app's form data is still using the local SQLite setup for now.
+Supabase handles the auth/client layer, while Prisma talks to the same Supabase Postgres database for app data.
 
 ## Data model
 
@@ -48,7 +57,7 @@ This is the client/auth wiring only. The app's form data is still using the loca
 
 ## Current database choice
 
-This first pass uses Prisma Client with a local SQLite file for speed while we shape the product. Before the first serious Vercel data deployment, switch the datasource to hosted Postgres and move the same models over.
+The app now uses Supabase Postgres. Prisma stores the app tables inside a dedicated `myformsvault` database schema so it can share a Supabase project without colliding with tables from your other app.
 
 ## Vercel settings
 
@@ -65,4 +74,4 @@ This first pass uses Prisma Client with a local SQLite file for speed while we s
 
 ## Next step
 
-Once you like this baseline, make the first meaningful commit and push it to GitHub. Then we can connect Vercel and upgrade the datasource from local SQLite to hosted Postgres.
+Keep your Vercel environment variables in sync with `.env.local`, then deploy from GitHub as usual.
