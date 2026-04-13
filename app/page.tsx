@@ -9,9 +9,9 @@ type HomePageProps = {
 };
 
 const launchStats = [
-  { value: "01", label: "Homepage + lead capture" },
-  { value: "02", label: "Dashboard + form inventory" },
-  { value: "03", label: "Public intake pages" },
+  { value: "01", label: "Template library" },
+  { value: "02", label: "Family vault" },
+  { value: "03", label: "Editable public forms" },
 ];
 
 export default async function Home({ searchParams }: HomePageProps) {
@@ -28,6 +28,9 @@ export default async function Home({ searchParams }: HomePageProps) {
           </Link>
           <nav className="topbar-links">
             <Link href="/dashboard">Dashboard</Link>
+            <Link href="/dashboard/templates">Templates</Link>
+            <Link href="/dashboard/vault">Family vault</Link>
+            <Link href="/dashboard/import">Import</Link>
             <Link href="/dashboard/forms/new" className="button button-secondary">
               Create form
             </Link>
@@ -39,13 +42,19 @@ export default async function Home({ searchParams }: HomePageProps) {
             <span className="eyebrow">Form operations, designed for momentum</span>
             <h1>Launch a polished intake flow before your coffee gets cold.</h1>
             <p className="lede">
-              myformsvault gives you a public-facing homepage, a clean dashboard, and reusable
-              forms that push submissions into one place so your team can move without spreadsheet
-              sprawl.
+              myformsvault now gives you a template library, a reusable family-information vault,
+              and editable public forms so the same school, medical, and household details do not
+              have to be re-entered every time a new packet shows up.
             </p>
             <div className="button-row">
               <Link href="/dashboard" className="button button-primary">
                 Open dashboard
+              </Link>
+              <Link href="/dashboard/templates" className="button button-secondary">
+                Browse templates
+              </Link>
+              <Link href="/dashboard/import" className="button button-secondary">
+                Import a form
               </Link>
               <Link href="/dashboard/forms/new" className="button button-ghost">
                 Start a new form
@@ -65,18 +74,19 @@ export default async function Home({ searchParams }: HomePageProps) {
             <div className="panel-glow" />
             <div className="surface-card">
               <span className="eyebrow">Launch stack</span>
-              <h2>From homepage to submissions in one repo.</h2>
+              <h2>From template library to reusable family data in one app.</h2>
               <ul className="feature-list">
-                <li>Branded homepage with a demo capture form</li>
-                <li>Dashboard summaries for forms, leads, and recent submissions</li>
-                <li>Public share links for client intake or lead capture</li>
+                <li>Indexed templates for school, medical, care, and intake workflows</li>
+                <li>Family member records with reusable basic, school, and medical info</li>
+                <li>Public share links with editable section-based form layouts</li>
               </ul>
             </div>
             <div className="surface-card offset-card">
               <span className="chip">MVP focus</span>
               <p>
-                The app now runs on Prisma backed by Supabase Postgres, so the homepage, dashboard,
-                and public forms all share the same live data foundation.
+                The app now runs on Supabase-backed Prisma with a first-pass form builder, so the
+                homepage, dashboard, template library, and public forms all share the same live data
+                foundation.
               </p>
             </div>
           </div>
@@ -86,26 +96,30 @@ export default async function Home({ searchParams }: HomePageProps) {
       <section className="section-grid">
         <div className="surface-card">
           <span className="eyebrow">What this first pass includes</span>
-          <h2>A homepage, a dashboard, and forms that already talk to a database.</h2>
+          <h2>A homepage, a dashboard, a template library, and reusable family records.</h2>
           <p>
-            This is the right moment to shape the product, not just wire infrastructure. The first
-            meaningful commit should contain the real skeleton you are about to build on.
+            This is the right moment to shape the product around reusable information blocks. The
+            app can now store family data once and project it into more than one form structure.
           </p>
         </div>
         <div className="surface-card">
           <span className="eyebrow">Default workflow</span>
           <div className="stack-list">
             <div>
-              <strong>1. Capture interest</strong>
-              <p>Use the homepage form to collect leads and inbound requests.</p>
+              <strong>1. Save family data</strong>
+              <p>Use the family vault to capture the most repeated information once.</p>
             </div>
             <div>
-              <strong>2. Publish forms</strong>
-              <p>Create public intake pages from the dashboard.</p>
+              <strong>2. Choose a template</strong>
+              <p>Start from school, medical, care, or intake templates instead of a blank page.</p>
             </div>
             <div>
-              <strong>3. Review submissions</strong>
-              <p>Track form performance and recent responses from one place.</p>
+              <strong>3. Import outside forms</strong>
+              <p>Paste OCR or downloaded field text and map it into reusable sections.</p>
+            </div>
+            <div>
+              <strong>4. Publish and review</strong>
+              <p>Share the public form, then review submissions and autofill previews from one place.</p>
             </div>
           </div>
         </div>

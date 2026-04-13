@@ -5,7 +5,19 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { Prisma } from "@/generated/prisma/client";
-import { createForm, createLead, createSubmission, getFormBySlug, normalizeSlug } from "@/lib/forms";
+import {
+  createFamilyMember,
+  createForm,
+  createImportedForm,
+  createLead,
+  createSubmission,
+  deleteFamilyMember,
+  getFormBySlug,
+  normalizeSlug,
+  parseSections,
+  updateForm,
+  updateFamilyMember,
+} from "@/lib/forms";
 
 const leadSchema = z.object({
   name: z.string().trim().min(2).max(80),
@@ -21,19 +33,113 @@ const createFormSchema = z.object({
   headline: z.string().trim().min(8).max(120),
   description: z.string().trim().min(12).max(240),
   accent: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/),
-  preset: z.enum(["lead", "client"]),
+  templateSlug: z.string().trim().min(3).max(80),
 });
 
-const submissionSchema = z.object({
+const importFormSchema = z.object({
+  name: z.string().trim().min(3).max(80),
+  slug: z.string().trim().min(3).max(60),
+  headline: z.string().trim().min(8).max(120),
+  description: z.string().trim().min(12).max(240),
+  accent: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/),
+  sourceText: z.string().trim().min(20).max(12000),
+});
+
+const familyMemberSchema = z.object({
+  householdName: z.string().trim().min(2).max(80),
   fullName: z.string().trim().min(2).max(80),
-  email: z.string().trim().email(),
-  company: z.string().trim().max(80).optional().or(z.literal("")),
-  website: z.string().trim().url().optional().or(z.literal("")),
-  goals: z.string().trim().min(12).max(1200),
+  relationship: z.string().trim().max(40).optional().or(z.literal("")),
+  dateOfBirth: z.string().trim().max(40).optional().or(z.literal("")),
+  email: z.string().trim().email().optional().or(z.literal("")),
+  phone: z.string().trim().max(40).optional().or(z.literal("")),
+  address: z.string().trim().max(240).optional().or(z.literal("")),
+  primaryLanguage: z.string().trim().max(40).optional().or(z.literal("")),
+  schoolName: z.string().trim().max(80).optional().or(z.literal("")),
+  gradeLevel: z.string().trim().max(40).optional().or(z.literal("")),
+  studentId: z.string().trim().max(40).optional().or(z.literal("")),
+  teacher: z.string().trim().max(80).optional().or(z.literal("")),
+  allergies: z.string().trim().max(600).optional().or(z.literal("")),
+  medications: z.string().trim().max(600).optional().or(z.literal("")),
+  conditions: z.string().trim().max(600).optional().or(z.literal("")),
+  physician: z.string().trim().max(80).optional().or(z.literal("")),
+  insuranceProvider: z.string().trim().max(80).optional().or(z.literal("")),
+  insuranceMemberId: z.string().trim().max(80).optional().or(z.literal("")),
+  insuranceGroupNumber: z.string().trim().max(80).optional().or(z.literal("")),
+  emergencyContactName: z.string().trim().max(80).optional().or(z.literal("")),
+  emergencyContactRelationship: z.string().trim().max(40).optional().or(z.literal("")),
+  emergencyContactPhone: z.string().trim().max(40).optional().or(z.literal("")),
+  authorizedPickup: z.string().trim().max(600).optional().or(z.literal("")),
+  pickupNotes: z.string().trim().max(600).optional().or(z.literal("")),
 });
 
 function isUniqueViolation(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+function isMissingRecord(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025";
+}
+
+function getSectionIds(formData: FormData) {
+  return formData
+    .getAll("sectionIds")
+    .map((value) => `${value}`.trim())
+    .filter(Boolean);
+}
+
+function validateFieldValue(type: string, value: string) {
+  if (!value) {
+    return true;
+  }
+
+  if (type === "email") {
+    return z.string().email().safeParse(value).success;
+  }
+
+  if (type === "url") {
+    return z.string().url().safeParse(value).success;
+  }
+
+  return true;
+}
+
+function buildFamilyMemberPayload(data: z.infer<typeof familyMemberSchema>) {
+  return {
+    householdName: data.householdName,
+    fullName: data.fullName,
+    relationship: data.relationship || undefined,
+    basicInfo: {
+      dateOfBirth: data.dateOfBirth || "",
+      email: data.email || "",
+      phone: data.phone || "",
+      address: data.address || "",
+      primaryLanguage: data.primaryLanguage || "",
+    },
+    schoolInfo: {
+      schoolName: data.schoolName || "",
+      gradeLevel: data.gradeLevel || "",
+      studentId: data.studentId || "",
+      teacher: data.teacher || "",
+    },
+    medicalInfo: {
+      allergies: data.allergies || "",
+      medications: data.medications || "",
+      conditions: data.conditions || "",
+      physician: data.physician || "",
+    },
+    insuranceInfo: {
+      provider: data.insuranceProvider || "",
+      memberId: data.insuranceMemberId || "",
+      groupNumber: data.insuranceGroupNumber || "",
+    },
+    emergencyInfo: {
+      contactName: data.emergencyContactName || "",
+      contactRelationship: data.emergencyContactRelationship || "",
+      contactPhone: data.emergencyContactPhone || "",
+      authorizedPickup: data.authorizedPickup || "",
+      pickupNotes: data.pickupNotes || "",
+    },
+  };
 }
 
 export async function captureLeadAction(formData: FormData) {
@@ -60,31 +166,217 @@ export async function captureLeadAction(formData: FormData) {
 }
 
 export async function createFormAction(formData: FormData) {
+  const templateSlug = `${formData.get("templateSlug") ?? ""}`.trim();
   const rawSlug = `${formData.get("slug") ?? ""}`;
+  const sectionIds = getSectionIds(formData);
   const parsed = createFormSchema.safeParse({
     name: formData.get("name"),
     slug: normalizeSlug(rawSlug),
     headline: formData.get("headline"),
     description: formData.get("description"),
     accent: formData.get("accent"),
-    preset: formData.get("preset"),
+    templateSlug,
   });
 
-  if (!parsed.success) {
-    redirect("/dashboard/forms/new?error=validation");
+  if (!parsed.success || sectionIds.length === 0) {
+    redirect(`/dashboard/forms/new?template=${encodeURIComponent(templateSlug)}&error=validation`);
   }
 
   try {
-    const form = await createForm(parsed.data);
+    const form = await createForm({
+      ...parsed.data,
+      sectionIds,
+    });
     revalidatePath("/dashboard");
+    revalidatePath("/dashboard/templates");
     redirect(`/dashboard/forms/${form.id}?created=1`);
   } catch (error) {
     if (isUniqueViolation(error)) {
-      redirect("/dashboard/forms/new?error=slug");
+      redirect(`/dashboard/forms/new?template=${encodeURIComponent(templateSlug)}&error=slug`);
     }
 
     throw error;
   }
+}
+
+export async function updateFormAction(formData: FormData) {
+  const templateSlug = `${formData.get("templateSlug") ?? ""}`.trim();
+  const rawSlug = `${formData.get("slug") ?? ""}`;
+  const id = `${formData.get("id") ?? ""}`.trim();
+  const sectionIds = getSectionIds(formData);
+  const parsed = createFormSchema.safeParse({
+    name: formData.get("name"),
+    slug: normalizeSlug(rawSlug),
+    headline: formData.get("headline"),
+    description: formData.get("description"),
+    accent: formData.get("accent"),
+    templateSlug,
+  });
+
+  if (!id || !parsed.success || sectionIds.length === 0) {
+    redirect(`/dashboard/forms/${id}/edit?error=validation`);
+  }
+
+  try {
+    const form = await updateForm({
+      id,
+      ...parsed.data,
+      sectionIds,
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath(`/dashboard/forms/${form.id}`);
+    revalidatePath(`/dashboard/forms/${form.id}/edit`);
+    revalidatePath(`/f/${form.slug}`);
+    redirect(`/dashboard/forms/${form.id}?updated=1`);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      redirect(`/dashboard/forms/${id}/edit?error=slug`);
+    }
+
+    throw error;
+  }
+}
+
+export async function importFormAction(formData: FormData) {
+  const parsed = importFormSchema.safeParse({
+    name: formData.get("name"),
+    slug: normalizeSlug(`${formData.get("slug") ?? ""}`),
+    headline: formData.get("headline"),
+    description: formData.get("description"),
+    accent: formData.get("accent"),
+    sourceText: formData.get("sourceText"),
+  });
+
+  if (!parsed.success) {
+    redirect("/dashboard/import?error=validation");
+  }
+
+  try {
+    const form = await createImportedForm(parsed.data);
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/import");
+    redirect(`/dashboard/forms/${form.id}?created=1`);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      redirect("/dashboard/import?error=slug");
+    }
+
+    throw error;
+  }
+}
+
+export async function createFamilyMemberAction(formData: FormData) {
+  const parsed = familyMemberSchema.safeParse({
+    householdName: formData.get("householdName"),
+    fullName: formData.get("fullName"),
+    relationship: formData.get("relationship"),
+    dateOfBirth: formData.get("dateOfBirth"),
+    email: formData.get("email"),
+    phone: formData.get("phone"),
+    address: formData.get("address"),
+    primaryLanguage: formData.get("primaryLanguage"),
+    schoolName: formData.get("schoolName"),
+    gradeLevel: formData.get("gradeLevel"),
+    studentId: formData.get("studentId"),
+    teacher: formData.get("teacher"),
+    allergies: formData.get("allergies"),
+    medications: formData.get("medications"),
+    conditions: formData.get("conditions"),
+    physician: formData.get("physician"),
+    insuranceProvider: formData.get("insuranceProvider"),
+    insuranceMemberId: formData.get("insuranceMemberId"),
+    insuranceGroupNumber: formData.get("insuranceGroupNumber"),
+    emergencyContactName: formData.get("emergencyContactName"),
+    emergencyContactRelationship: formData.get("emergencyContactRelationship"),
+    emergencyContactPhone: formData.get("emergencyContactPhone"),
+    authorizedPickup: formData.get("authorizedPickup"),
+    pickupNotes: formData.get("pickupNotes"),
+  });
+
+  if (!parsed.success) {
+    redirect("/dashboard/vault?error=validation");
+  }
+
+  await createFamilyMember(buildFamilyMemberPayload(parsed.data));
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/vault");
+  redirect("/dashboard/vault?created=1");
+}
+
+export async function updateFamilyMemberAction(formData: FormData) {
+  const id = `${formData.get("id") ?? ""}`.trim();
+  const parsed = familyMemberSchema.safeParse({
+    householdName: formData.get("householdName"),
+    fullName: formData.get("fullName"),
+    relationship: formData.get("relationship"),
+    dateOfBirth: formData.get("dateOfBirth"),
+    email: formData.get("email"),
+    phone: formData.get("phone"),
+    address: formData.get("address"),
+    primaryLanguage: formData.get("primaryLanguage"),
+    schoolName: formData.get("schoolName"),
+    gradeLevel: formData.get("gradeLevel"),
+    studentId: formData.get("studentId"),
+    teacher: formData.get("teacher"),
+    allergies: formData.get("allergies"),
+    medications: formData.get("medications"),
+    conditions: formData.get("conditions"),
+    physician: formData.get("physician"),
+    insuranceProvider: formData.get("insuranceProvider"),
+    insuranceMemberId: formData.get("insuranceMemberId"),
+    insuranceGroupNumber: formData.get("insuranceGroupNumber"),
+    emergencyContactName: formData.get("emergencyContactName"),
+    emergencyContactRelationship: formData.get("emergencyContactRelationship"),
+    emergencyContactPhone: formData.get("emergencyContactPhone"),
+    authorizedPickup: formData.get("authorizedPickup"),
+    pickupNotes: formData.get("pickupNotes"),
+  });
+
+  if (!id || !parsed.success) {
+    redirect(id ? `/dashboard/vault/${id}/edit?error=validation` : "/dashboard/vault?error=validation");
+  }
+
+  try {
+    await updateFamilyMember({
+      id,
+      ...buildFamilyMemberPayload(parsed.data),
+    });
+  } catch (error) {
+    if (isMissingRecord(error)) {
+      redirect("/dashboard/vault");
+    }
+
+    throw error;
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/vault");
+  revalidatePath(`/dashboard/vault/${id}/edit`);
+  redirect("/dashboard/vault?updated=1");
+}
+
+export async function deleteFamilyMemberAction(formData: FormData) {
+  const id = `${formData.get("id") ?? ""}`.trim();
+
+  if (!id) {
+    redirect("/dashboard/vault");
+  }
+
+  try {
+    await deleteFamilyMember(id);
+  } catch (error) {
+    if (isMissingRecord(error)) {
+      redirect("/dashboard/vault");
+    }
+
+    throw error;
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/vault");
+  redirect("/dashboard/vault?deleted=1");
 }
 
 export async function submitPublicFormAction(formData: FormData) {
@@ -95,23 +387,24 @@ export async function submitPublicFormAction(formData: FormData) {
     redirect("/");
   }
 
-  const parsed = submissionSchema.safeParse({
-    fullName: formData.get("fullName"),
-    email: formData.get("email"),
-    company: formData.get("company"),
-    website: formData.get("website"),
-    goals: formData.get("goals"),
-  });
+  const sections = parseSections(form.sections ?? form.fields);
+  const values: Record<string, string> = {};
 
-  if (!parsed.success) {
-    redirect(`/f/${slug}?error=submission`);
+  for (const field of sections.flatMap((section) => section.fields)) {
+    const value = `${formData.get(field.key) ?? ""}`.trim();
+
+    if (field.required && value.length === 0) {
+      redirect(`/f/${slug}?error=submission`);
+    }
+
+    if (!validateFieldValue(field.type, value)) {
+      redirect(`/f/${slug}?error=submission`);
+    }
+
+    values[field.key] = value;
   }
 
-  await createSubmission(form, {
-    ...parsed.data,
-    company: parsed.data.company || undefined,
-    website: parsed.data.website || undefined,
-  });
+  await createSubmission(form, values);
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/forms/${form.id}`);

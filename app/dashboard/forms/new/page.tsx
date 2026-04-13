@@ -1,20 +1,29 @@
 import Link from "next/link";
 
 import { createFormAction } from "@/app/actions";
+import { getTemplateCatalog, getTemplateCategoryLabel, parseSections } from "@/lib/forms";
+
+export const dynamic = "force-dynamic";
 
 type NewFormPageProps = {
   searchParams: Promise<{
     error?: string;
+    template?: string;
   }>;
 };
 
 export default async function NewFormPage({ searchParams }: NewFormPageProps) {
   const params = await searchParams;
+  const templates = await getTemplateCatalog();
+  const selectedTemplate =
+    templates.find((template) => template.slug === params.template) ?? templates[0];
+  const sections = selectedTemplate ? parseSections(selectedTemplate.sections) : [];
+
   const errorMessage =
     params.error === "slug"
       ? "That slug is already taken. Try a different public URL."
       : params.error === "validation"
-        ? "A few fields still need attention."
+        ? "A few fields or sections still need attention."
         : null;
 
   return (
@@ -23,87 +32,114 @@ export default async function NewFormPage({ searchParams }: NewFormPageProps) {
         <div className="dashboard-heading">
           <div className="dashboard-copy">
             <span className="eyebrow">Create form</span>
-            <h1>Spin up a public intake page in one pass.</h1>
+            <h1>Start from a strong template, then keep only the sections you need.</h1>
             <p>
-              Start with a strong default. You can tune field sets and workflow rules after the
-              first version is live.
+              This is the first version of the form editing framework: choose a template, adjust
+              the metadata, and launch a form with reusable section blocks instead of a one-off
+              field list.
             </p>
           </div>
-          <Link href="/dashboard" className="button button-secondary">
-            Back to dashboard
-          </Link>
+          <div className="button-row">
+            <Link href="/dashboard/templates" className="button button-secondary">
+              Browse templates
+            </Link>
+            <Link href="/dashboard" className="button button-ghost">
+              Back to dashboard
+            </Link>
+          </div>
         </div>
 
         <div className="detail-grid">
           <section className="form-surface">
             {errorMessage ? <div className="notice warning">{errorMessage}</div> : null}
-            <form action={createFormAction} className="form-grid">
-              <label className="field">
-                <span>Form name</span>
-                <input name="name" type="text" placeholder="Discovery call" required />
-              </label>
-              <label className="field">
-                <span>Public slug</span>
-                <input name="slug" type="text" placeholder="discovery-call" required />
-              </label>
-              <label className="field field-full">
-                <span>Headline</span>
-                <input
-                  name="headline"
-                  type="text"
-                  placeholder="Tell us what the next project needs to accomplish."
-                  required
-                />
-              </label>
-              <label className="field field-full">
-                <span>Description</span>
-                <textarea
-                  name="description"
-                  rows={4}
-                  placeholder="Explain what the form is for and what respondents should expect next."
-                  required
-                />
-              </label>
-              <label className="field">
-                <span>Accent color</span>
-                <input name="accent" type="text" defaultValue="#ef6f34" required />
-              </label>
-              <label className="field">
-                <span>Preset</span>
-                <select name="preset" defaultValue="lead">
-                  <option value="lead">Lead intake</option>
-                  <option value="client">Client onboarding</option>
-                </select>
-              </label>
-              <div className="field-full button-row">
-                <button type="submit" className="button button-primary">
-                  Create and publish
-                </button>
-                <Link href="/dashboard" className="button button-ghost">
-                  Cancel
+
+            <div className="template-tab-row">
+              {templates.map((template) => (
+                <Link
+                  key={template.id}
+                  href={`/dashboard/forms/new?template=${template.slug}`}
+                  className={`template-tab${template.slug === selectedTemplate?.slug ? " is-active" : ""}`}
+                >
+                  <strong>{template.name}</strong>
+                  <span>{getTemplateCategoryLabel(template.category)}</span>
                 </Link>
-              </div>
-            </form>
+              ))}
+            </div>
+
+            {selectedTemplate ? (
+              <form action={createFormAction} className="form-grid" style={{ marginTop: "1.4rem" }}>
+                <input type="hidden" name="templateSlug" value={selectedTemplate.slug} />
+                <label className="field">
+                  <span>Form name</span>
+                  <input name="name" type="text" defaultValue={selectedTemplate.name} required />
+                </label>
+                <label className="field">
+                  <span>Public slug</span>
+                  <input name="slug" type="text" defaultValue={selectedTemplate.slug} required />
+                </label>
+                <label className="field field-full">
+                  <span>Headline</span>
+                  <input
+                    name="headline"
+                    type="text"
+                    defaultValue={`Complete the ${selectedTemplate.name.toLowerCase()} in one pass.`}
+                    required
+                  />
+                </label>
+                <label className="field field-full">
+                  <span>Description</span>
+                  <textarea
+                    name="description"
+                    rows={4}
+                    defaultValue={selectedTemplate.description}
+                    required
+                  />
+                </label>
+                <label className="field">
+                  <span>Accent color</span>
+                  <input name="accent" type="text" defaultValue={selectedTemplate.accent} required />
+                </label>
+                <div className="field field-full">
+                  <span>Included sections</span>
+                  <div className="section-selector-grid">
+                    {sections.map((section) => (
+                      <label key={section.id} className="section-toggle">
+                        <input type="checkbox" name="sectionIds" value={section.id} defaultChecked />
+                        <div>
+                          <strong>{section.title}</strong>
+                          <p>{section.description}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="field-full button-row">
+                  <button type="submit" className="button button-primary">
+                    Create and publish
+                  </button>
+                  <Link href="/dashboard/templates" className="button button-ghost">
+                    Switch template
+                  </Link>
+                </div>
+              </form>
+            ) : null}
           </section>
 
-          <aside className="surface-card">
-            <span className="eyebrow">What gets created</span>
-            <h2>One public page, one share link, one dashboard record.</h2>
-            <div className="stack-list">
-              <div>
-                <strong>Lead intake preset</strong>
-                <p>Great for sales requests, partnerships, or demo inquiries.</p>
+          {selectedTemplate ? (
+            <aside className="surface-card">
+              <span className="eyebrow">Selected template</span>
+              <h2>{selectedTemplate.name}</h2>
+              <p style={{ marginTop: "0.8rem" }}>{selectedTemplate.overview}</p>
+              <div className="stack-list" style={{ marginTop: "1rem" }}>
+                {sections.map((section) => (
+                  <div key={section.id} className="section-chip">
+                    <strong>{section.title}</strong>
+                    <p>{section.fields.length} mapped fields</p>
+                  </div>
+                ))}
               </div>
-              <div>
-                <strong>Client onboarding preset</strong>
-                <p>Better for kickoff context, project intake, and onboarding details.</p>
-              </div>
-              <div>
-                <strong>Stored automatically</strong>
-                <p>Every form and submission is written to the shared Supabase-backed database.</p>
-              </div>
-            </div>
-          </aside>
+            </aside>
+          ) : null}
         </div>
       </div>
     </main>

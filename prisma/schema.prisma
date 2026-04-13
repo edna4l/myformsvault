@@ -21,6 +21,16 @@ enum FormStatus {
   @@schema("myformsvault")
 }
 
+enum TemplateCategory {
+  LEAD_INTAKE
+  EDUCATION
+  MEDICAL
+  FAMILY_CARE
+  GENERAL
+
+  @@schema("myformsvault")
+}
+
 model Lead {
   id        String   @id @default(cuid())
   name      String
@@ -29,6 +39,39 @@ model Lead {
   teamSize  String?
   message   String
   createdAt DateTime @default(now())
+
+  @@schema("myformsvault")
+}
+
+model FormTemplate {
+  id          String           @id @default(cuid())
+  name        String
+  slug        String           @unique
+  category    TemplateCategory
+  overview    String
+  description String
+  accent      String           @default("#ff7a00")
+  sections    Json
+  featured    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  forms       Form[]
+
+  @@schema("myformsvault")
+}
+
+model FamilyMember {
+  id            String    @id @default(cuid())
+  householdName String
+  fullName      String
+  relationship  String?
+  basicInfo     Json
+  schoolInfo    Json?
+  medicalInfo   Json?
+  insuranceInfo Json?
+  emergencyInfo Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@schema("myformsvault")
 }
@@ -42,23 +85,30 @@ model Form {
   accent      String           @default("#ff7a00")
   status      FormStatus       @default(DRAFT)
   fields      Json
+  sections    Json?
+  templateId  String?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   submissions FormSubmission[]
+  template    FormTemplate?    @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
   @@schema("myformsvault")
 }
 
 model FormSubmission {
-  id        String   @id @default(cuid())
-  formId    String
-  fullName  String
-  email     String
-  company   String?
-  website   String?
-  goals     String
-  createdAt DateTime @default(now())
-  form      Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  id            String   @id @default(cuid())
+  formId        String
+  fullName      String?
+  email         String?
+  company       String?
+  website       String?
+  goals         String?
+  submitterName String?
+  submitterEmail String?
+  summary       String?
+  responses     Json?
+  createdAt     DateTime @default(now())
+  form          Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
 
   @@index([formId, createdAt(sort: Desc)])
   @@schema("myformsvault")
