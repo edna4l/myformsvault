@@ -1,7 +1,8 @@
 import Link from "next/link";
 
 import { createFormAction } from "@/app/actions";
-import { getTemplateCatalog, getTemplateCategoryLabel, parseSections } from "@/lib/forms";
+import { SectionBuilder } from "@/app/dashboard/forms/section-builder";
+import { getSectionCatalog, getTemplateCatalog, getTemplateCategoryLabel, parseSections } from "@/lib/forms";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ type NewFormPageProps = {
 export default async function NewFormPage({ searchParams }: NewFormPageProps) {
   const params = await searchParams;
   const templates = await getTemplateCatalog();
+  const sectionCatalog = getSectionCatalog();
   const selectedTemplate =
     templates.find((template) => template.slug === params.template) ?? templates[0];
   const sections = selectedTemplate ? parseSections(selectedTemplate.sections) : [];
@@ -99,20 +101,11 @@ export default async function NewFormPage({ searchParams }: NewFormPageProps) {
                   <span>Accent color</span>
                   <input name="accent" type="text" defaultValue={selectedTemplate.accent} required />
                 </label>
-                <div className="field field-full">
-                  <span>Included sections</span>
-                  <div className="section-selector-grid">
-                    {sections.map((section) => (
-                      <label key={section.id} className="section-toggle">
-                        <input type="checkbox" name="sectionIds" value={section.id} defaultChecked />
-                        <div>
-                          <strong>{section.title}</strong>
-                          <p>{section.description}</p>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                <SectionBuilder
+                  key={selectedTemplate.slug}
+                  catalog={sectionCatalog}
+                  defaultSelectedSectionIds={sections.map((section) => section.id)}
+                />
                 <div className="field-full button-row">
                   <button type="submit" className="button button-primary">
                     Create and publish
@@ -137,6 +130,10 @@ export default async function NewFormPage({ searchParams }: NewFormPageProps) {
                     <p>{section.fields.length} mapped fields</p>
                   </div>
                 ))}
+                <div className="section-chip">
+                  <strong>Custom sections</strong>
+                  <p>Add your own sections in the editor when the template needs something unique.</p>
+                </div>
               </div>
             </aside>
           ) : null}

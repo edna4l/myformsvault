@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { createFamilyMemberAction } from "@/app/actions";
 import { FamilyMemberForm } from "@/app/dashboard/vault/member-form";
-import { getFamilyMembers } from "@/lib/forms";
+import { getFamilyMembers, getHouseholdSummaries } from "@/lib/forms";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +27,7 @@ function getRecord(value: unknown) {
 
 export default async function FamilyVaultPage({ searchParams }: FamilyVaultPageProps) {
   const params = await searchParams;
-  const members = await getFamilyMembers();
+  const [members, households] = await Promise.all([getFamilyMembers(), getHouseholdSummaries()]);
   const errorMessage = params.error === "validation" ? "A few required details still need attention." : null;
   const created = params.created === "1";
   const updated = params.updated === "1";
@@ -78,16 +78,60 @@ export default async function FamilyVaultPage({ searchParams }: FamilyVaultPageP
           </section>
 
           <aside className="surface-card">
-            <span className="eyebrow">Stored records</span>
-            <h2>Ready for reuse</h2>
+            <span className="eyebrow">Households</span>
+            <h2>Organized family records</h2>
             <div className="detail-stack" style={{ marginTop: "1rem" }}>
+              {households.length === 0 ? (
+                <div className="empty-state">
+                  <strong>No households yet</strong>
+                  <p>
+                    The first profile you add here will be available in form detail previews, public
+                    forms, and grouped into a household automatically.
+                  </p>
+                </div>
+              ) : (
+                households.map((household) => (
+                  <article key={household.slug} className="list-card compact-card">
+                    <div className="list-row">
+                      <strong>{household.householdName}</strong>
+                      <span className="meta-item">
+                        {household.memberCount} member{household.memberCount === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <div className="stack-list compact-list">
+                      <p>
+                        {household.stats.schoolProfiles} school, {household.stats.medicalProfiles} medical,{" "}
+                        {household.stats.insuranceProfiles} insurance, and {household.stats.emergencyProfiles}{" "}
+                        emergency-ready profile{household.memberCount === 1 ? "" : "s"}.
+                      </p>
+                      {household.schools.length > 0 ? <p>Schools: {household.schools.join(", ")}</p> : null}
+                      {household.emergencyContacts.length > 0 ? (
+                        <p>Emergency contacts: {household.emergencyContacts.join(", ")}</p>
+                      ) : null}
+                    </div>
+                    <div className="button-row">
+                      <Link
+                        href={`/dashboard/vault/households/${household.slug}`}
+                        className="button button-secondary"
+                      >
+                        Open household
+                      </Link>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+
+            <div className="detail-stack" style={{ marginTop: "1.5rem" }}>
+              <div>
+                <span className="eyebrow">Member profiles</span>
+                <h2 style={{ marginTop: "0.85rem" }}>Ready for autofill</h2>
+              </div>
+
               {members.length === 0 ? (
                 <div className="empty-state">
                   <strong>No family members yet</strong>
-                  <p>
-                    The first profile you add here will be available in form detail previews and
-                    directly on public forms that support vault autofill.
-                  </p>
+                  <p>Saved profiles will appear here with quick links back into editing.</p>
                 </div>
               ) : (
                 members.map((member) => {

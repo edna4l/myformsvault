@@ -76,6 +76,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <span className="metric-label">Family members</span>
             <strong className="metric-value">{data.metrics.familyMembers}</strong>
           </div>
+          <div className="metric-card">
+            <span className="metric-label">Households</span>
+            <strong className="metric-value">{data.metrics.households}</strong>
+          </div>
         </div>
 
         <div className="dashboard-grid" style={{ marginTop: "1.25rem" }}>
@@ -175,26 +179,38 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               <div className="list-row">
                 <div>
                   <span className="eyebrow">Family vault</span>
-                  <h2>Reusable member records</h2>
+                  <h2>Household groups</h2>
                 </div>
                 <Link href="/dashboard/vault" className="button button-ghost">
                   Open vault
                 </Link>
               </div>
               <div className="detail-stack" style={{ marginTop: "1rem" }}>
-                {data.familyMembers.length === 0 ? (
+                {data.households.length === 0 ? (
                   <div className="empty-state">
-                    <strong>No family members yet</strong>
-                    <p>Add one member and start reusing their school, medical, and emergency info.</p>
+                    <strong>No households yet</strong>
+                    <p>Add one member and the vault will start organizing the family records automatically.</p>
                   </div>
                 ) : (
-                  data.familyMembers.map((member) => (
-                    <article key={member.id} className="list-card compact-card">
+                  data.households.map((household) => (
+                    <article key={household.slug} className="list-card compact-card">
                       <div className="list-row">
-                        <strong>{member.fullName}</strong>
-                        <span className="meta-item">{member.householdName}</span>
+                        <strong>{household.householdName}</strong>
+                        <span className="meta-item">
+                          {household.memberCount} member{household.memberCount === 1 ? "" : "s"}
+                        </span>
                       </div>
-                      <p className="list-copy">{member.relationship || "Family record"} ready for autofill.</p>
+                      <p className="list-copy">
+                        {household.stats.schoolProfiles} school, {household.stats.medicalProfiles} medical, and{" "}
+                        {household.stats.emergencyProfiles} emergency profile
+                        {household.memberCount === 1 ? "" : "s"} ready to reuse.
+                      </p>
+                      <Link
+                        href={`/dashboard/vault/households/${household.slug}`}
+                        className="button button-secondary"
+                      >
+                        View household
+                      </Link>
                     </article>
                   ))
                 )}

@@ -5,7 +5,8 @@ export type FamilyMemberFormDefaults = {
   dateOfBirth: string;
   email: string;
   phone: string;
-  address: string;
+  streetAddress: string;
+  mailingAddress: string;
   primaryLanguage: string;
   schoolName: string;
   gradeLevel: string;
@@ -32,7 +33,8 @@ export const emptyFamilyMemberDefaults: FamilyMemberFormDefaults = {
   dateOfBirth: "",
   email: "",
   phone: "",
-  address: "",
+  streetAddress: "",
+  mailingAddress: "",
   primaryLanguage: "",
   schoolName: "",
   gradeLevel: "",
@@ -120,12 +122,21 @@ export function FamilyMemberForm({
         />
       </label>
       <label className="field field-full">
-        <span>Address</span>
+        <span>Street address</span>
         <textarea
-          name="address"
+          name="streetAddress"
           rows={3}
-          placeholder="123 Main St, Oakland, CA 94612"
-          defaultValue={defaults.address}
+          placeholder="123 Main St, Apartment 5"
+          defaultValue={defaults.streetAddress}
+        />
+      </label>
+      <label className="field field-full">
+        <span>Mailing address</span>
+        <textarea
+          name="mailingAddress"
+          rows={3}
+          placeholder="PO Box 321, Oakland, CA 94612"
+          defaultValue={defaults.mailingAddress}
         />
       </label>
       <label className="field">

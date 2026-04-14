@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { submitPublicFormAction } from "@/app/actions";
-import { getFamilyMembers, getFormBySlug, getFormPrefillValues, parseSections } from "@/lib/forms";
+import { getFormBySlug, getFormPrefillValues, getHouseholdSummaries, parseSections } from "@/lib/forms";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +13,7 @@ type PublicFormPageProps = {
   searchParams: Promise<{
     submitted?: string;
     error?: string;
+    household?: string;
     member?: string;
   }>;
 };
@@ -20,15 +21,21 @@ type PublicFormPageProps = {
 export default async function PublicFormPage({ params, searchParams }: PublicFormPageProps) {
   const route = await params;
   const query = await searchParams;
-  const [form, familyMembers] = await Promise.all([getFormBySlug(route.slug), getFamilyMembers()]);
+  const [form, households] = await Promise.all([getFormBySlug(route.slug), getHouseholdSummaries()]);
 
   if (!form) {
     notFound();
   }
 
+  const allMembers = households.flatMap((household) => household.members);
   const familyMember = query.member
-    ? familyMembers.find((member) => member.id === query.member) ?? null
+    ? allMembers.find((member) => member.id === query.member) ?? null
     : null;
+  const selectedHousehold =
+    households.find((household) => household.slug === query.household) ??
+    households.find((household) => household.members.some((member) => member.id === familyMember?.id)) ??
+    null;
+  const householdMembers = selectedHousehold?.members ?? [];
   const sections = parseSections(form.sections ?? form.fields);
   const prefill = getFormPrefillValues(form, familyMember);
   const hasError = query.error === "submission";
@@ -58,7 +65,13 @@ export default async function PublicFormPage({ params, searchParams }: PublicFor
         </div>
         {familyMember ? (
           <div className="notice" style={{ marginTop: "1rem" }}>
-            Prefill preview is using the saved record for <strong>{familyMember.fullName}</strong>.
+            Prefill preview is using <strong>{familyMember.fullName}</strong> from the{" "}
+            <strong>{selectedHousehold?.householdName ?? familyMember.householdName}</strong> household.
+          </div>
+        ) : selectedHousehold ? (
+          <div className="notice" style={{ marginTop: "1rem" }}>
+            <strong>{selectedHousehold.householdName}</strong> is selected. Choose a member profile
+            below to load their saved details into this form.
           </div>
         ) : null}
       </header>
@@ -72,18 +85,19 @@ export default async function PublicFormPage({ params, searchParams }: PublicFor
         {hasError ? (
           <div className="notice warning">A couple of required fields still need attention.</div>
         ) : null}
-        {familyMembers.length > 0 ? (
+        {households.length > 0 ? (
           <div className="surface-card" style={{ marginBottom: "1.25rem", boxShadow: "none" }}>
             <div className="list-row" style={{ alignItems: "flex-start" }}>
               <div>
                 <span className="eyebrow">Vault autofill</span>
-                <h2 style={{ marginTop: "0.85rem" }}>Load a saved family profile</h2>
+                <h2 style={{ marginTop: "0.85rem" }}>Choose a household, then a saved member</h2>
                 <p style={{ marginTop: "0.6rem" }}>
-                  Choose a saved family member to prefill the sections this form already knows how
-                  to reuse. You can switch profiles or clear the autofill at any time.
+                  Pick the household first so the member picker stays focused on the right family.
+                  Once you choose a person, the form will prefill any matching basic, school,
+                  medical, insurance, or emergency fields.
                 </p>
               </div>
-              {familyMember ? (
+              {selectedHousehold || familyMember ? (
                 <Link href={`/f/${form.slug}`} className="button button-ghost">
                   Clear autofill
                 </Link>
@@ -91,31 +105,82 @@ export default async function PublicFormPage({ params, searchParams }: PublicFor
             </div>
 
             <form method="GET" className="form-grid" style={{ marginTop: "1rem" }}>
-              <label className="field field-full">
-                <span>Saved family member</span>
-                <select name="member" defaultValue={familyMember?.id ?? ""}>
-                  <option value="">Start with a blank form</option>
-                  {familyMembers.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.fullName} · {member.householdName}
+              <label className="field">
+                <span>Household</span>
+                <select name="household" defaultValue={selectedHousehold?.slug ?? ""}>
+                  <option value="">Choose a household</option>
+                  {households.map((household) => (
+                    <option key={household.slug} value={household.slug}>
+                      {household.householdName} · {household.memberCount} member
+                      {household.memberCount === 1 ? "" : "s"}
                     </option>
                   ))}
                 </select>
               </label>
+              <label className="field">
+                <span>Family member</span>
+                <select
+                  name="member"
+                  defaultValue={familyMember?.id ?? ""}
+                  disabled={!selectedHousehold}
+                >
+                  <option value="">
+                    {selectedHousehold ? "Choose a saved member" : "Select a household first"}
+                  </option>
+                  {householdMembers.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.fullName}
+                      {member.relationship ? ` · ${member.relationship}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedHousehold ? (
+                <div className="field field-full">
+                  <div className="section-chip">
+                    <strong>{selectedHousehold.householdName}</strong>
+                    <p>
+                      {selectedHousehold.memberCount} saved member
+                      {selectedHousehold.memberCount === 1 ? "" : "s"} ·{" "}
+                      {selectedHousehold.stats.schoolProfiles} school-ready ·{" "}
+                      {selectedHousehold.stats.medicalProfiles} medical-ready
+                    </p>
+                  </div>
+                </div>
+              ) : null}
               <div className="field-full button-row">
                 <button type="submit" className="button button-secondary">
-                  {familyMember ? "Switch autofill profile" : "Load saved profile"}
+                  {familyMember
+                    ? "Switch autofill profile"
+                    : selectedHousehold
+                      ? "Load saved member"
+                      : "Continue to member selection"}
                 </button>
+                {selectedHousehold ? (
+                  <Link
+                    href={`/dashboard/vault/households/${selectedHousehold.slug}`}
+                    className="button button-ghost"
+                  >
+                    View household
+                  </Link>
+                ) : null}
               </div>
             </form>
+
+            {selectedHousehold && !familyMember ? (
+              <div className="notice" style={{ marginTop: "1rem" }}>
+                Choose a member from <strong>{selectedHousehold.householdName}</strong> to prefill
+                this form.
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="surface-card" style={{ marginBottom: "1.25rem", boxShadow: "none" }}>
             <span className="eyebrow">Vault autofill</span>
             <h2 style={{ marginTop: "0.85rem" }}>No saved family profiles yet</h2>
             <p style={{ marginTop: "0.6rem" }}>
-              Add a family member once in the vault, then come back here to load their basic,
-              school, medical, and emergency details into any matching form.
+              Add a family member once in the vault, then come back here to choose their household
+              and load matching basic, school, medical, and emergency details into this form.
             </p>
             <div className="button-row" style={{ marginTop: "1rem" }}>
               <Link href="/dashboard/vault" className="button button-secondary">

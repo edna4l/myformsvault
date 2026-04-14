@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { updateFormAction } from "@/app/actions";
+import { SectionBuilder } from "@/app/dashboard/forms/section-builder";
 import { getFormById, getSectionCatalog, getTemplateCatalog, parseSections } from "@/lib/forms";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +25,13 @@ export default async function EditFormPage({ params, searchParams }: EditFormPag
     notFound();
   }
 
-  const activeSections = new Set(parseSections(form.sections ?? form.fields).map((section) => section.id));
   const sectionCatalog = getSectionCatalog();
+  const catalogIds = new Set(sectionCatalog.map((section) => section.id));
+  const currentSections = parseSections(form.sections ?? form.fields);
+  const activeSectionIds = currentSections
+    .filter((section) => catalogIds.has(section.id))
+    .map((section) => section.id);
+  const customSections = currentSections.filter((section) => !catalogIds.has(section.id));
   const errorMessage =
     query.error === "slug"
       ? "That slug is already taken. Try a different public URL."
@@ -90,27 +96,11 @@ export default async function EditFormPage({ params, searchParams }: EditFormPag
                 ))}
               </select>
             </label>
-            <div className="field field-full">
-              <span>Active sections</span>
-              <div className="section-selector-grid">
-                {sectionCatalog.map((section) => (
-                  <label key={section.id} className="section-toggle">
-                    <input
-                      type="checkbox"
-                      name="sectionIds"
-                      value={section.id}
-                      defaultChecked={activeSections.has(section.id)}
-                    />
-                    <div>
-                      <strong>{section.title}</strong>
-                      <p>
-                        {section.description} · {section.fieldCount} fields
-                      </p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
+            <SectionBuilder
+              catalog={sectionCatalog}
+              defaultSelectedSectionIds={activeSectionIds}
+              defaultCustomSections={customSections}
+            />
             <div className="field-full button-row">
               <button type="submit" className="button button-primary">
                 Save form changes

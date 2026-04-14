@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { Prisma } from "@/generated/prisma/client";
 import {
+  type FormSection,
   createFamilyMember,
   createForm,
   createImportedForm,
@@ -18,6 +19,7 @@ import {
   updateForm,
   updateFamilyMember,
 } from "@/lib/forms";
+import { prepareImportQueryState } from "@/lib/import-sources";
 
 const leadSchema = z.object({
   name: z.string().trim().min(2).max(80),
@@ -45,6 +47,21 @@ const importFormSchema = z.object({
   sourceText: z.string().trim().min(20).max(12000),
 });
 
+const customFieldSchema = z.object({
+  id: z.string().trim().min(1).max(120),
+  label: z.string().trim().min(1).max(120),
+  type: z.enum(["text", "email", "url", "textarea", "date", "tel"]),
+  placeholder: z.string().trim().max(240).optional().or(z.literal("")),
+  required: z.boolean(),
+});
+
+const customSectionSchema = z.object({
+  id: z.string().trim().min(1).max(120),
+  title: z.string().trim().min(2).max(80),
+  description: z.string().trim().max(240),
+  fields: z.array(customFieldSchema).min(1).max(20),
+});
+
 const familyMemberSchema = z.object({
   householdName: z.string().trim().min(2).max(80),
   fullName: z.string().trim().min(2).max(80),
@@ -52,7 +69,8 @@ const familyMemberSchema = z.object({
   dateOfBirth: z.string().trim().max(40).optional().or(z.literal("")),
   email: z.string().trim().email().optional().or(z.literal("")),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
-  address: z.string().trim().max(240).optional().or(z.literal("")),
+  streetAddress: z.string().trim().max(240).optional().or(z.literal("")),
+  mailingAddress: z.string().trim().max(240).optional().or(z.literal("")),
   primaryLanguage: z.string().trim().max(40).optional().or(z.literal("")),
   schoolName: z.string().trim().max(80).optional().or(z.literal("")),
   gradeLevel: z.string().trim().max(40).optional().or(z.literal("")),
@@ -87,6 +105,54 @@ function getSectionIds(formData: FormData) {
     .filter(Boolean);
 }
 
+function normalizeCustomToken(value: string, fallback: string) {
+  return normalizeSlug(value.replace(/\./g, "-")) || fallback;
+}
+
+function getCustomSections(formData: FormData): FormSection[] | null {
+  const raw = `${formData.get("customSections") ?? "[]"}`.trim();
+
+  if (!raw) {
+    return [];
+  }
+
+  let parsedValue: unknown;
+
+  try {
+    parsedValue = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  const parsed = z.array(customSectionSchema).max(12).safeParse(parsedValue);
+
+  if (!parsed.success) {
+    return null;
+  }
+
+  return parsed.data.map((section, sectionIndex) => {
+    const baseSectionId = normalizeCustomToken(section.id || section.title, `custom-section-${sectionIndex + 1}`);
+    const sectionId = baseSectionId.startsWith("custom-") ? baseSectionId : `custom-${baseSectionId}`;
+
+    return {
+      id: sectionId,
+      title: section.title,
+      description: section.description,
+      fields: section.fields.map((field, fieldIndex) => {
+        const fieldId = normalizeCustomToken(field.id || field.label, `field-${fieldIndex + 1}`);
+
+        return {
+          key: `custom.${sectionId}.${fieldId}`,
+          label: field.label,
+          type: field.type,
+          placeholder: field.placeholder || "",
+          required: field.required,
+        };
+      }),
+    };
+  });
+}
+
 function validateFieldValue(type: string, value: string) {
   if (!value) {
     return true;
@@ -112,7 +178,8 @@ function buildFamilyMemberPayload(data: z.infer<typeof familyMemberSchema>) {
       dateOfBirth: data.dateOfBirth || "",
       email: data.email || "",
       phone: data.phone || "",
-      address: data.address || "",
+      streetAddress: data.streetAddress || "",
+      mailingAddress: data.mailingAddress || "",
       primaryLanguage: data.primaryLanguage || "",
     },
     schoolInfo: {
@@ -142,6 +209,56 @@ function buildFamilyMemberPayload(data: z.infer<typeof familyMemberSchema>) {
   };
 }
 
+function redirectToPreparedImport(
+  state: Partial<{
+    method: string;
+    draft: string;
+    sourceLabel: string;
+    sourceTitle: string;
+    sourceKind: string;
+    sourceType: string;
+    usedFallbackText: boolean;
+  }>,
+  error?: string,
+) {
+  const params = new URLSearchParams();
+
+  if (state.method) {
+    params.set("method", state.method);
+  }
+
+  if (state.draft) {
+    params.set("draft", state.draft);
+  }
+
+  if (state.sourceLabel) {
+    params.set("sourceLabel", state.sourceLabel);
+  }
+
+  if (state.sourceTitle) {
+    params.set("sourceTitle", state.sourceTitle);
+  }
+
+  if (state.sourceKind) {
+    params.set("sourceKind", state.sourceKind);
+  }
+
+  if (state.sourceType) {
+    params.set("sourceType", state.sourceType);
+  }
+
+  if (state.usedFallbackText) {
+    params.set("usedFallbackText", "1");
+  }
+
+  if (error) {
+    params.set("error", error);
+  }
+
+  const query = params.toString();
+  redirect(query ? `/dashboard/import?${query}` : "/dashboard/import");
+}
+
 export async function captureLeadAction(formData: FormData) {
   const parsed = leadSchema.safeParse({
     name: formData.get("name"),
@@ -169,6 +286,7 @@ export async function createFormAction(formData: FormData) {
   const templateSlug = `${formData.get("templateSlug") ?? ""}`.trim();
   const rawSlug = `${formData.get("slug") ?? ""}`;
   const sectionIds = getSectionIds(formData);
+  const customSections = getCustomSections(formData);
   const parsed = createFormSchema.safeParse({
     name: formData.get("name"),
     slug: normalizeSlug(rawSlug),
@@ -178,7 +296,7 @@ export async function createFormAction(formData: FormData) {
     templateSlug,
   });
 
-  if (!parsed.success || sectionIds.length === 0) {
+  if (!parsed.success || !customSections || sectionIds.length + customSections.length === 0) {
     redirect(`/dashboard/forms/new?template=${encodeURIComponent(templateSlug)}&error=validation`);
   }
 
@@ -186,6 +304,7 @@ export async function createFormAction(formData: FormData) {
     const form = await createForm({
       ...parsed.data,
       sectionIds,
+      customSections,
     });
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/templates");
@@ -204,6 +323,7 @@ export async function updateFormAction(formData: FormData) {
   const rawSlug = `${formData.get("slug") ?? ""}`;
   const id = `${formData.get("id") ?? ""}`.trim();
   const sectionIds = getSectionIds(formData);
+  const customSections = getCustomSections(formData);
   const parsed = createFormSchema.safeParse({
     name: formData.get("name"),
     slug: normalizeSlug(rawSlug),
@@ -213,7 +333,7 @@ export async function updateFormAction(formData: FormData) {
     templateSlug,
   });
 
-  if (!id || !parsed.success || sectionIds.length === 0) {
+  if (!id || !parsed.success || !customSections || sectionIds.length + customSections.length === 0) {
     redirect(`/dashboard/forms/${id}/edit?error=validation`);
   }
 
@@ -222,6 +342,7 @@ export async function updateFormAction(formData: FormData) {
       id,
       ...parsed.data,
       sectionIds,
+      customSections,
     });
 
     revalidatePath("/dashboard");
@@ -235,6 +356,19 @@ export async function updateFormAction(formData: FormData) {
     }
 
     throw error;
+  }
+}
+
+export async function prepareImportSourceAction(formData: FormData) {
+  const prepared = await prepareImportQueryState(formData);
+
+  if (prepared.ok) {
+    redirectToPreparedImport(prepared.state);
+  } else {
+    redirectToPreparedImport(
+      prepared.state ?? { method: `${formData.get("method") ?? "application"}` },
+      prepared.error,
+    );
   }
 }
 
@@ -274,7 +408,8 @@ export async function createFamilyMemberAction(formData: FormData) {
     dateOfBirth: formData.get("dateOfBirth"),
     email: formData.get("email"),
     phone: formData.get("phone"),
-    address: formData.get("address"),
+    streetAddress: formData.get("streetAddress"),
+    mailingAddress: formData.get("mailingAddress"),
     primaryLanguage: formData.get("primaryLanguage"),
     schoolName: formData.get("schoolName"),
     gradeLevel: formData.get("gradeLevel"),
@@ -314,7 +449,8 @@ export async function updateFamilyMemberAction(formData: FormData) {
     dateOfBirth: formData.get("dateOfBirth"),
     email: formData.get("email"),
     phone: formData.get("phone"),
-    address: formData.get("address"),
+    streetAddress: formData.get("streetAddress"),
+    mailingAddress: formData.get("mailingAddress"),
     primaryLanguage: formData.get("primaryLanguage"),
     schoolName: formData.get("schoolName"),
     gradeLevel: formData.get("gradeLevel"),

@@ -10,7 +10,7 @@ import {
 import { prisma } from "./prisma";
 
 type FormPreset = "lead" | "client";
-type SupportedFieldType = "text" | "email" | "url" | "textarea" | "date" | "tel";
+export type SupportedFieldType = "text" | "email" | "url" | "textarea" | "date" | "tel";
 
 export type FormField = {
   key: string;
@@ -41,6 +41,23 @@ export type ImportedFormBlueprint = {
   sections: FormSection[];
   matchedSectionIds: string[];
   unmappedLabels: string[];
+};
+
+export type HouseholdSummary = {
+  slug: string;
+  householdName: string;
+  memberCount: number;
+  members: FamilyMember[];
+  lastUpdated: Date;
+  relationships: string[];
+  schools: string[];
+  emergencyContacts: string[];
+  stats: {
+    schoolProfiles: number;
+    medicalProfiles: number;
+    insuranceProfiles: number;
+    emergencyProfiles: number;
+  };
 };
 
 type FamilySectionRecord = Record<string, string>;
@@ -197,12 +214,20 @@ const sectionLibrary: Record<string, FormSection> = {
         autofillKey: "basic.phone",
       },
       {
-        key: "basic.address",
-        label: "Address",
+        key: "basic.streetAddress",
+        label: "Street address",
         type: "textarea",
-        placeholder: "123 Main St, Apartment 5, Oakland, CA 94612",
+        placeholder: "123 Main St, Apartment 5",
         required: false,
-        autofillKey: "basic.address",
+        autofillKey: "basic.streetAddress",
+      },
+      {
+        key: "basic.mailingAddress",
+        label: "Mailing address",
+        type: "textarea",
+        placeholder: "PO Box 321, Oakland, CA 94612",
+        required: false,
+        autofillKey: "basic.mailingAddress",
       },
     ],
   },
@@ -439,7 +464,8 @@ const fieldKeywordMatchers: FieldKeywordMatcher[] = [
   { sectionId: "basic-info", key: "basic.dateOfBirth", matcher: /\b(date of birth|dob|birth date)\b/i },
   { sectionId: "basic-info", key: "basic.email", matcher: /\b(email|e-mail)\b/i },
   { sectionId: "basic-info", key: "basic.phone", matcher: /\b(phone|mobile|cell)\b/i },
-  { sectionId: "basic-info", key: "basic.address", matcher: /\b(address|mailing address|home address)\b/i },
+  { sectionId: "basic-info", key: "basic.mailingAddress", matcher: /\b(mailing address|mail address|po box|postal address)\b/i },
+  { sectionId: "basic-info", key: "basic.streetAddress", matcher: /\b(street address|home address|residential address|physical address|address)\b/i },
   { sectionId: "school-info", key: "school.schoolName", matcher: /\b(school name|school|campus)\b/i },
   { sectionId: "school-info", key: "school.gradeLevel", matcher: /\b(grade|grade level|class)\b/i },
   { sectionId: "school-info", key: "school.studentId", matcher: /\b(student id|student number|pupil id)\b/i },
@@ -620,6 +646,76 @@ function normalizeRecord(value: Prisma.JsonValue | null | undefined): FamilySect
   );
 }
 
+function hasRecordContent(value: Prisma.JsonValue | null | undefined) {
+  return Object.values(normalizeRecord(value)).some((candidate) => candidate.trim().length > 0);
+}
+
+function uniqueNonEmpty(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function buildHouseholdSummary(members: FamilyMember[]): HouseholdSummary {
+  const householdName = members[0]?.householdName.trim() || "Untitled household";
+  const slug = normalizeSlug(householdName) || `household-${members[0]?.id ?? "record"}`;
+  const orderedMembers = [...members].sort((left, right) => {
+    const dateDelta = right.updatedAt.getTime() - left.updatedAt.getTime();
+
+    if (dateDelta !== 0) {
+      return dateDelta;
+    }
+
+    return left.fullName.localeCompare(right.fullName);
+  });
+
+  return {
+    slug,
+    householdName,
+    memberCount: orderedMembers.length,
+    members: orderedMembers,
+    lastUpdated: orderedMembers[0]?.updatedAt ?? new Date(0),
+    relationships: uniqueNonEmpty(orderedMembers.map((member) => member.relationship || "")),
+    schools: uniqueNonEmpty(
+      orderedMembers.map((member) => normalizeRecord(member.schoolInfo).schoolName || ""),
+    ),
+    emergencyContacts: uniqueNonEmpty(
+      orderedMembers.map((member) => normalizeRecord(member.emergencyInfo).contactName || ""),
+    ),
+    stats: {
+      schoolProfiles: orderedMembers.filter((member) => hasRecordContent(member.schoolInfo)).length,
+      medicalProfiles: orderedMembers.filter((member) => hasRecordContent(member.medicalInfo)).length,
+      insuranceProfiles: orderedMembers.filter((member) => hasRecordContent(member.insuranceInfo)).length,
+      emergencyProfiles: orderedMembers.filter((member) => hasRecordContent(member.emergencyInfo)).length,
+    },
+  };
+}
+
+function groupHouseholds(members: FamilyMember[]) {
+  const householdMap = new Map<string, FamilyMember[]>();
+
+  for (const member of members) {
+    const key = member.householdName.trim() || "Untitled household";
+    const existing = householdMap.get(key);
+
+    if (existing) {
+      existing.push(member);
+    } else {
+      householdMap.set(key, [member]);
+    }
+  }
+
+  return [...householdMap.values()]
+    .map(buildHouseholdSummary)
+    .sort((left, right) => {
+      const updatedDelta = right.lastUpdated.getTime() - left.lastUpdated.getTime();
+
+      if (updatedDelta !== 0) {
+        return updatedDelta;
+      }
+
+      return left.householdName.localeCompare(right.householdName);
+    });
+}
+
 function parseFieldCandidate(value: unknown): FormField | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -757,6 +853,24 @@ function resolveTemplateSections(templateSections: Prisma.JsonValue, selectedSec
   return selectedSections.length > 0 ? selectedSections : parseSections(templateSections);
 }
 
+export function mergeFormSections(baseSections: FormSection[], customSections: FormSection[]) {
+  if (customSections.length === 0) {
+    return baseSections;
+  }
+
+  const seenSectionIds = new Set(baseSections.map((section) => section.id));
+  const dedupedCustomSections = customSections.filter((section) => {
+    if (seenSectionIds.has(section.id)) {
+      return false;
+    }
+
+    seenSectionIds.add(section.id);
+    return true;
+  });
+
+  return [...baseSections, ...dedupedCustomSections];
+}
+
 function serializeSectionRecord(record: FamilySectionRecord) {
   const compact = compactRecord(record);
   return Object.keys(compact).length > 0 ? compact : Prisma.JsonNull;
@@ -860,12 +974,16 @@ function buildFamilyAutofillValues(member: FamilyMember) {
   const medical = normalizeRecord(member.medicalInfo);
   const insurance = normalizeRecord(member.insuranceInfo);
   const emergency = normalizeRecord(member.emergencyInfo);
+  const streetAddress = basic.streetAddress ?? basic.address ?? "";
+  const mailingAddress = basic.mailingAddress ?? "";
 
   return {
     "basic.fullName": member.fullName,
     "basic.email": basic.email ?? "",
     "basic.phone": basic.phone ?? "",
-    "basic.address": basic.address ?? "",
+    "basic.streetAddress": streetAddress,
+    "basic.mailingAddress": mailingAddress,
+    "basic.address": streetAddress || mailingAddress,
     "basic.dateOfBirth": basic.dateOfBirth ?? "",
     "school.schoolName": school.schoolName ?? "",
     "school.gradeLevel": school.gradeLevel ?? "",
@@ -1069,7 +1187,8 @@ export async function ensureSeedData() {
 export async function getDashboardData() {
   await ensureSeedData();
 
-  const [forms, leads, submissionCount, templateCount, familyMemberCount, templates, familyMembers] = await Promise.all([
+  const [forms, leads, submissionCount, templateCount, familyMemberCount, templates, familyMembers, allFamilyMembers] =
+    await Promise.all([
     prisma.form.findMany({
       include: {
         _count: {
@@ -1106,19 +1225,28 @@ export async function getDashboardData() {
       },
       take: 3,
     }),
+    prisma.familyMember.findMany({
+      orderBy: {
+        updatedAt: "desc",
+      },
+    }),
   ]);
+
+  const households = groupHouseholds(allFamilyMembers);
 
   return {
     forms,
     leads,
     templates,
     familyMembers,
+    households: households.slice(0, 3),
     metrics: {
       forms: forms.length,
       liveForms: forms.filter((form) => form.status === FormStatus.ACTIVE).length,
       submissions: submissionCount,
       templates: templateCount,
       familyMembers: familyMemberCount,
+      households: households.length,
     },
   };
 }
@@ -1145,6 +1273,18 @@ export async function getFamilyMembers() {
       updatedAt: "desc",
     },
   });
+}
+
+export async function getHouseholdSummaries() {
+  const members = await getFamilyMembers();
+
+  return groupHouseholds(members);
+}
+
+export async function getHouseholdSummaryBySlug(slug: string) {
+  const households = await getHouseholdSummaries();
+
+  return households.find((household) => household.slug === slug) ?? null;
 }
 
 export async function getFamilyMemberById(id: string) {
@@ -1197,6 +1337,7 @@ export async function createForm(input: {
   accent: string;
   templateSlug: string;
   sectionIds?: string[];
+  customSections?: FormSection[];
 }) {
   await ensureTemplateData();
 
@@ -1204,9 +1345,10 @@ export async function createForm(input: {
     where: { slug: input.templateSlug },
   });
 
-  const sections = template
+  const baseSections = template
     ? resolveTemplateSections(template.sections, input.sectionIds)
     : sectionsFromIds(input.sectionIds ?? ["lead-contact", "project-needs"]);
+  const sections = mergeFormSections(baseSections, input.customSections ?? []);
 
   return prisma.form.create({
     data: {
@@ -1256,6 +1398,7 @@ export async function updateForm(input: {
   accent: string;
   templateSlug?: string;
   sectionIds: string[];
+  customSections?: FormSection[];
 }) {
   await ensureTemplateData();
 
@@ -1265,10 +1408,11 @@ export async function updateForm(input: {
       })
     : null;
 
-  const sections =
+  const baseSections =
     template && input.sectionIds.length > 0
       ? resolveTemplateSections(template.sections, input.sectionIds)
       : sectionsFromIds(input.sectionIds);
+  const sections = mergeFormSections(baseSections, input.customSections ?? []);
 
   return prisma.form.update({
     where: {
