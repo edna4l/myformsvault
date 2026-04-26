@@ -61,7 +61,7 @@ model FormTemplate {
 }
 
 model FamilyMember {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   householdName String
   fullName      String
   relationship  String?
@@ -70,9 +70,23 @@ model FamilyMember {
   medicalInfo   Json?
   insuranceInfo Json?
   emergencyInfo Json?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
+  @@schema("myformsvault")
+}
+
+model OriginalFormLayout {
+  id             String   @id @default(cuid())
+  name           String
+  sourceFileName String
+  sourceKind     String
+  fieldMappings  Json
+  placements     Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([updatedAt(sort: Desc)])
   @@schema("myformsvault")
 }
 
@@ -96,19 +110,19 @@ model Form {
 }
 
 model FormSubmission {
-  id            String   @id @default(cuid())
-  formId        String
-  fullName      String?
-  email         String?
-  company       String?
-  website       String?
-  goals         String?
-  submitterName String?
+  id             String   @id @default(cuid())
+  formId         String
+  fullName       String?
+  email          String?
+  company        String?
+  website        String?
+  goals          String?
+  submitterName  String?
   submitterEmail String?
-  summary       String?
-  responses     Json?
-  createdAt     DateTime @default(now())
-  form          Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  summary        String?
+  responses      Json?
+  createdAt      DateTime @default(now())
+  form           Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
 
   @@index([formId, createdAt(sort: Desc)])
   @@schema("myformsvault")

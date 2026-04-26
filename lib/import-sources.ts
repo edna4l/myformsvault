@@ -6,7 +6,7 @@ import {
   type ImportedFormBlueprint,
 } from "@/lib/forms";
 
-export type ImportMethod = "application" | "webpage" | "file" | "camera";
+export type ImportMethod = "application" | "webpage" | "file" | "camera" | "fill";
 export type ImportSourceKind =
   | "application"
   | "webpage"
@@ -15,6 +15,7 @@ export type ImportSourceKind =
   | "image"
   | "camera";
 export type ImportCompatibilityStatus = "ready" | "review" | "needs-input";
+export const MAX_IMPORT_UPLOAD_BYTES = 8_000_000;
 
 export type ImportQueryState = {
   method: ImportMethod;
@@ -51,7 +52,7 @@ type PrepareImportResult =
     }
   | {
       ok: false;
-      error: "validation" | "url" | "fetch" | "ocr";
+      error: "validation" | "url" | "fetch" | "ocr" | "file-too-large";
       state?: Partial<ImportQueryState>;
     };
 
@@ -69,6 +70,7 @@ const methodLabels: Record<ImportMethod, string> = {
   webpage: "Webpage import",
   file: "File upload",
   camera: "Photo or scan",
+  fill: "Fill original",
 };
 
 const nativeOcrCachePath = `${tmpdir()}/myformsvault-tesseract`;
@@ -87,6 +89,31 @@ function hasUsefulImportText(value: string) {
 
   const lines = normalized.split(/\r?\n/).filter((line) => line.trim().length > 1);
   return lines.length > 1 || normalized.length >= 40;
+}
+
+function countMatches(value: string, pattern: RegExp) {
+  return value.match(pattern)?.length ?? 0;
+}
+
+function looksLikeCorruptedPdfText(value: string) {
+  const normalized = value.trim();
+
+  if (!normalized) {
+    return false;
+  }
+
+  const suspiciousCharacters = countMatches(
+    normalized,
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u0080-\u009f\u0100-\u017f\u0180-\u024f\u03f5]/g,
+  );
+  const suspiciousRatio = suspiciousCharacters / normalized.length;
+  const knownMojibakeMarkers = countMatches(normalized, /[ĂăĐđĚĞĨŝŶŽƉƌƚƵůŵŶϵ]/g);
+  const encodedFontFragments = countMatches(
+    normalized,
+    /\b(?:6RFLDO|6HFXULW|1XPEHU|7D[[]?SD|FHUWLI|DSSOLF|TXHVWLRQ|UHQHZ|FRPSOHW|LQIRUPDWLRQ|VLJQDWXUH|GHQWLILFDWLRQ)\b/gi,
+  );
+
+  return suspiciousRatio > 0.012 || knownMojibakeMarkers >= 8 || encodedFontFragments >= 3;
 }
 
 function loadPdfJsModule() {
@@ -354,7 +381,7 @@ async function extractNativePdfImport(file: File, sourceType: string) {
   const { text } = await extractText(pdf, { mergePages: true });
   const normalizedPdfText = normalizeImportedText(text, "application/pdf");
 
-  if (hasUsefulImportText(normalizedPdfText)) {
+  if (hasUsefulImportText(normalizedPdfText) && !looksLikeCorruptedPdfText(normalizedPdfText)) {
     return {
       draft: normalizedPdfText,
       resolvedSourceType: `native-pdf-text:${sourceType}`,
@@ -389,7 +416,9 @@ async function extractNativePdfImport(file: File, sourceType: string) {
 
   return {
     draft: normalizedOcrText,
-    resolvedSourceType: `native-pdf-ocr:${sourceType}`,
+    resolvedSourceType: looksLikeCorruptedPdfText(normalizedPdfText)
+      ? `native-pdf-ocr:${sourceType}:rejected-corrupt-text-layer`
+      : `native-pdf-ocr:${sourceType}`,
   };
 }
 
@@ -501,8 +530,8 @@ async function prepareUploadedImport(
   );
   const sourceType = file.type || file.name.split(".").pop() || "unknown";
 
-  if (file.size > 8_000_000) {
-    return { ok: false, error: "validation" };
+  if (file.size > MAX_IMPORT_UPLOAD_BYTES) {
+    return { ok: false, error: "file-too-large" };
   }
 
   if (isTextLikeUpload(file.name, file.type)) {
@@ -597,7 +626,7 @@ async function prepareUploadedImport(
 }
 
 export function normalizeImportMethod(value: string | null | undefined): ImportMethod {
-  if (value === "webpage" || value === "file" || value === "camera") {
+  if (value === "webpage" || value === "file" || value === "camera" || value === "fill") {
     return value;
   }
 
@@ -666,6 +695,7 @@ export function buildImportDraftSummary(state: ImportQueryState): ImportDraftSum
     const sourceType = state.sourceType.toLowerCase();
     const usedNativePdfText = sourceType.startsWith("native-pdf-text:");
     const usedNativePdfOcr = sourceType.startsWith("native-pdf-ocr:");
+    const rejectedCorruptPdfText = sourceType.includes("rejected-corrupt-text-layer");
     const usedNativeOcr = sourceType.startsWith("native-ocr:");
 
     pushCompatibility(
@@ -679,7 +709,9 @@ export function buildImportDraftSummary(state: ImportQueryState): ImportDraftSum
       usedNativePdfText
         ? "The app extracted a text layer directly from the PDF, so this source is ready for mapping with only a quick wording check."
         : usedNativePdfOcr
-          ? "The app rendered each PDF page and ran built-in OCR on the scan. Review the wording for OCR mistakes before saving."
+          ? rejectedCorruptPdfText
+            ? "The PDF text layer looked corrupted, so the app rendered each page and used OCR instead. Review the wording before saving."
+            : "The app rendered each PDF page and ran built-in OCR on the scan. Review the wording for OCR mistakes before saving."
           : usedNativeOcr
             ? "The app read this image or scan with built-in OCR. Double-check labels for OCR mistakes before saving the form."
             : state.usedFallbackText
@@ -734,7 +766,7 @@ export function buildImportDraftSummary(state: ImportQueryState): ImportDraftSum
         ? state.sourceType.toLowerCase().startsWith("native-pdf-text:")
           ? "Save the import once the field list looks right, then fine-tune labels or sections in the form editor if needed."
           : state.sourceType.toLowerCase().startsWith("native-pdf-ocr:")
-            ? "Review the OCR wording page by page, then save the import and fine-tune labels or section grouping in the form editor."
+            ? "Use this OCR draft only if you want a reusable web form. To fill the original PDF exactly, switch to Fill original document and place vault fields on the visual form."
             : "Review extracted wording, then save the import and fine-tune the field labels in the form editor."
         : state.method === "webpage"
           ? "Check the imported field list for navigation or helper text, then save the form and trim anything extra."

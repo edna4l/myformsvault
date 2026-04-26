@@ -411,7 +411,7 @@ const templateSeeds: TemplateSeed[] = [
     category: TemplateCategory.LEAD_INTAKE,
     overview: "A strong lead intake for partnerships, demos, and inbound requests.",
     description: "Capture the right lead details, triage requests, and keep the next step obvious.",
-    accent: "#ef6f34",
+    accent: "#4f46e5",
     featured: true,
     sections: ["lead-contact", "organization-context", "project-needs"],
   },
@@ -421,7 +421,7 @@ const templateSeeds: TemplateSeed[] = [
     category: TemplateCategory.GENERAL,
     overview: "A client-facing kickoff intake you can share before the first working session.",
     description: "Gather the context you need before kickoff, approvals, and timeline planning.",
-    accent: "#2d8b77",
+    accent: "#2563eb",
     featured: true,
     sections: ["lead-contact", "organization-context", "project-needs"],
   },
@@ -431,7 +431,7 @@ const templateSeeds: TemplateSeed[] = [
     category: TemplateCategory.EDUCATION,
     overview: "Collect core student, school, medical, and emergency data in one pass.",
     description: "Great for admissions, annual packet refreshes, and after-school onboarding.",
-    accent: "#3b61d1",
+    accent: "#3b82f6",
     featured: true,
     sections: ["basic-info", "school-info", "medical-info", "emergency-contacts"],
   },
@@ -441,7 +441,7 @@ const templateSeeds: TemplateSeed[] = [
     category: TemplateCategory.MEDICAL,
     overview: "A reusable intake shell for pediatric specialists, therapists, and clinics.",
     description: "Store medical, insurance, and emergency details once and reuse them anywhere.",
-    accent: "#c34869",
+    accent: "#7c3aed",
     featured: true,
     sections: ["basic-info", "medical-info", "insurance-info", "emergency-contacts"],
   },
@@ -451,7 +451,7 @@ const templateSeeds: TemplateSeed[] = [
     category: TemplateCategory.FAMILY_CARE,
     overview: "A family-facing template for school, camp, or care teams who need a full snapshot.",
     description: "Bundle household, emergency, school, and medical sections into a single shareable form.",
-    accent: "#6a4fd8",
+    accent: "#6d28d9",
     featured: true,
     sections: ["basic-info", "school-info", "medical-info", "insurance-info", "emergency-contacts", "household-preferences"],
   },
@@ -1003,6 +1003,10 @@ function buildFamilyAutofillValues(member: FamilyMember) {
     "household.authorizedPickup": emergency.authorizedPickup ?? "",
     "household.pickupNotes": emergency.pickupNotes ?? "",
   };
+}
+
+export function getFamilyAutofillValues(member: FamilyMember) {
+  return buildFamilyAutofillValues(member);
 }
 
 export function getBaseUrl() {

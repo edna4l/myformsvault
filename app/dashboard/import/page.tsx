@@ -1,12 +1,23 @@
 import Link from "next/link";
 
 import { importFormAction, prepareImportSourceAction } from "@/app/actions";
-import { getTemplateCategoryLabel, normalizeSlug } from "@/lib/forms";
 import {
+  getFamilyAutofillValues,
+  getFamilyMembers,
+  getTemplateCategoryLabel,
+  normalizeSlug,
+} from "@/lib/forms";
+import {
+  MAX_IMPORT_UPLOAD_BYTES,
   buildImportDraftSummary,
   normalizeImportMethod,
   type ImportMethod,
 } from "@/lib/import-sources";
+import { getOriginalFormLayouts } from "@/lib/original-form-layouts";
+import {
+  FillOriginalForm,
+  type FillOriginalMemberOption,
+} from "./fill/fill-original-form";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +71,13 @@ const importMethods: Array<{
       "Capture paperwork from a phone or scanner and let the app try OCR before you need any backup text.",
     eyebrow: "CamScanner-style",
   },
+  {
+    id: "fill",
+    title: "Fill original document",
+    description:
+      "Upload the original PDF and generate a filled copy from a saved family vault profile.",
+    eyebrow: "Vault autofill",
+  },
 ];
 
 function buildDefaultImportName(sourceTitle: string, method: ImportMethod) {
@@ -99,11 +117,124 @@ function getErrorMessage(error?: string) {
     return "The app could not extract enough text from that file on its own. Add companion OCR text or try a cleaner scan.";
   }
 
+  if (error === "file-too-large") {
+    return "That upload is larger than the current 8 MB import limit. Try a smaller file, compress the scan, or upload fewer pages at a time.";
+  }
+
+  if (error === "profile") {
+    return "Choose a saved family profile before generating the filled copy.";
+  }
+
+  if (error === "db") {
+    return "Saved profiles could not be reached. Check the database connection and try again.";
+  }
+
+  if (error === "unsupported-type") {
+    return "The fill-original workflow currently supports PDF, PNG, and JPG originals. Use the import mapper for other file types.";
+  }
+
+  if (error === "invalid-pdf") {
+    return "That original file could not be opened cleanly. Try exporting or downloading a fresh PDF, PNG, or JPG copy.";
+  }
+
+  if (error === "not-fillable") {
+    return "That PDF does not expose fillable fields yet. Use the import mapper for now, or try a fillable version while the placement editor is being built.";
+  }
+
+  if (error === "no-placements") {
+    return "Place at least one vault detail on the original document before generating the filled copy.";
+  }
+
+  if (error === "no-profile-values") {
+    return "That saved profile does not have enough reusable details yet. Add details in the family vault, then try again.";
+  }
+
+  if (error === "no-matches") {
+    return "The app found fillable fields, but their names did not match the saved profile fields. Reopen the PDF and match those fields to vault details.";
+  }
+
   if (error === "validation") {
     return "Add the outside form source first so the importer has field text to map.";
   }
 
   return null;
+}
+
+type FamilyMemberOption = Awaited<ReturnType<typeof getFamilyMembers>>[number];
+
+function FillOriginalSidebar({
+  familyMembers,
+  layoutsUnavailable,
+  profilesUnavailable,
+  savedLayoutCount,
+}: {
+  familyMembers: FamilyMemberOption[];
+  layoutsUnavailable: boolean;
+  profilesUnavailable: boolean;
+  savedLayoutCount: number;
+}) {
+  return (
+    <>
+      <span className="eyebrow">Original fill</span>
+      <h2>Saved information goes back into the uploaded PDF.</h2>
+      <div className="stack-list">
+        <div className="section-chip">
+          <strong>Available profiles</strong>
+          {profilesUnavailable ? (
+            <p>Saved profiles could not be loaded from the database yet.</p>
+          ) : (
+            <p>
+              {familyMembers.length} saved profile{familyMembers.length === 1 ? "" : "s"} ready to
+              choose from the family vault.
+            </p>
+          )}
+        </div>
+        <div className="section-chip">
+          <strong>Matched details</strong>
+          <p>Basic, school, medical, insurance, emergency, household, and manual field matches.</p>
+        </div>
+        <div className="section-chip">
+          <strong>Reusable layouts</strong>
+          {layoutsUnavailable ? (
+            <p>Saved layouts could not be loaded yet.</p>
+          ) : (
+            <p>
+              {savedLayoutCount} saved layout{savedLayoutCount === 1 ? "" : "s"} ready to reuse.
+            </p>
+          )}
+        </div>
+        <div className="section-chip">
+          <strong>Output</strong>
+          <p>A downloaded PDF copy with the matching original fields filled.</p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+async function getFillProfileState() {
+  const state = {
+    familyMembers: [] as FamilyMemberOption[],
+    layoutsUnavailable: false,
+    profilesUnavailable: false,
+    savedLayouts: [] as Awaited<ReturnType<typeof getOriginalFormLayouts>>,
+  };
+
+  try {
+    state.familyMembers = await getFamilyMembers();
+  } catch (error) {
+    console.error("Unable to load family profiles for fill workflow", error);
+    state.profilesUnavailable = true;
+  }
+
+  try {
+    state.savedLayouts = await getOriginalFormLayouts();
+  } catch (error) {
+    console.error("Unable to load reusable original form layouts", error);
+    state.layoutsUnavailable = true;
+  }
+
+  return state;
 }
 
 type ImportPageProps = {
@@ -122,6 +253,10 @@ type ImportPageProps = {
 export default async function ImportPage({ searchParams }: ImportPageProps) {
   const params = await searchParams;
   const activeMethod = normalizeImportMethod(params.method);
+  const { familyMembers, layoutsUnavailable, profilesUnavailable, savedLayouts } =
+    activeMethod === "fill"
+      ? await getFillProfileState()
+      : { familyMembers: [], layoutsUnavailable: false, profilesUnavailable: false, savedLayouts: [] };
   const sourceText = params.draft?.trim()
     ? params.draft.trim()
     : activeMethod === "application"
@@ -135,6 +270,8 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
         ? "Public webpage"
         : activeMethod === "camera"
           ? "Captured scan"
+          : activeMethod === "fill"
+            ? "Original document"
           : "Uploaded form");
   const sourceTitle =
     params.sourceTitle?.trim() || buildDefaultImportName(sourceLabel, activeMethod);
@@ -154,15 +291,29 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
           ? "webpage"
           : activeMethod === "camera"
             ? "camera"
-            : activeMethod === "file"
+            : activeMethod === "fill"
               ? "document"
-              : "application",
+              : activeMethod === "file"
+                ? "document"
+                : "application",
     sourceType: params.sourceType?.trim() || "manual-text",
     usedFallbackText: params.usedFallbackText === "1",
   });
   const errorMessage = getErrorMessage(params.error);
   const defaultName = buildDefaultImportName(sourceTitle, activeMethod);
   const defaultSlug = normalizeSlug(defaultName) || "imported-form";
+  const uploadLimitLabel = `${Math.floor(MAX_IMPORT_UPLOAD_BYTES / 1_000_000)} MB`;
+  const fillMemberOptions: FillOriginalMemberOption[] = familyMembers.map((member) => ({
+    autofillValues: {
+      ...getFamilyAutofillValues(member),
+      "basic.relationship": member.relationship ?? "",
+      "household.name": member.householdName,
+    },
+    id: member.id,
+    fullName: member.fullName,
+    householdName: member.householdName,
+    relationship: member.relationship,
+  }));
 
   return (
     <main className="app-shell">
@@ -215,15 +366,24 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
 
         <div className="detail-grid" style={{ marginTop: "1.25rem" }}>
           <section className="form-surface import-step-stack">
-            <div>
-              <span className="eyebrow">Step 1</span>
-              <h2 style={{ marginTop: "0.85rem" }}>Prepare the outside form source</h2>
-              <p style={{ marginTop: "0.6rem" }}>
-                Start with the source you actually have. The importer will adapt its compatibility
-                checks depending on whether you are pulling from copied text, a live webpage, an
-                uploaded document, or a scan that still needs OCR cleanup.
-              </p>
-            </div>
+            {activeMethod === "fill" ? (
+              <FillOriginalForm
+                familyMembers={fillMemberOptions}
+                profilesUnavailable={profilesUnavailable}
+                savedLayouts={savedLayouts}
+                uploadLimitLabel={uploadLimitLabel}
+              />
+            ) : (
+              <>
+                <div>
+                  <span className="eyebrow">Step 1</span>
+                  <h2 style={{ marginTop: "0.85rem" }}>Prepare the outside form source</h2>
+                  <p style={{ marginTop: "0.6rem" }}>
+                    Start with the source you actually have. The importer will adapt its compatibility
+                    checks depending on whether you are pulling from copied text, a live webpage, an
+                    uploaded document, or a scan that still needs OCR cleanup.
+                  </p>
+                </div>
 
             {activeMethod === "application" ? (
               <form action={prepareImportSourceAction} className="form-grid">
@@ -289,6 +449,10 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
                     accept=".txt,.csv,.json,.xml,.html,.htm,.md,application/json,text/*,application/pdf,image/*"
                   />
                 </label>
+                <p className="list-copy">
+                  Uploads currently support up to {uploadLimitLabel} per file. Text exports,
+                  cleaner scans, and shorter PDFs will map the most reliably.
+                </p>
                 <label className="field field-full">
                   <span>Companion text if native extraction misses anything</span>
                   <textarea
@@ -318,6 +482,10 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
                     capture="environment"
                   />
                 </label>
+                <p className="list-copy">
+                  Upload scans or PDFs up to {uploadLimitLabel}. If a packet is larger, split it
+                  into smaller sections so the OCR step stays fast and reliable.
+                </p>
                 <label className="field field-full">
                   <span>Optional OCR backup text</span>
                   <textarea
@@ -344,57 +512,68 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
               </p>
             </div>
 
-            {sourceText ? (
-              <form action={importFormAction} className="form-grid">
-                <input type="hidden" name="sourceText" value={sourceText} />
-                <label className="field">
-                  <span>Form name</span>
-                  <input name="name" type="text" defaultValue={defaultName} required />
-                </label>
-                <label className="field">
-                  <span>Public slug</span>
-                  <input name="slug" type="text" defaultValue={defaultSlug} required />
-                </label>
-                <label className="field field-full">
-                  <span>Headline</span>
-                  <input
-                    name="headline"
-                    type="text"
-                    defaultValue={`Complete the ${defaultName.toLowerCase()} without retyping every section.`}
-                    required
-                  />
-                </label>
-                <label className="field field-full">
-                  <span>Description</span>
-                  <textarea
-                    name="description"
-                    rows={4}
-                    defaultValue={`This form was imported from ${summary.methodLabel.toLowerCase()} and grouped into reusable sections where possible.`}
-                    required
-                  />
-                </label>
-                <label className="field">
-                  <span>Accent color</span>
-                  <input name="accent" type="text" defaultValue="#5b6ee1" required />
-                </label>
-                <div className="field-full button-row">
-                  <button type="submit" className="button button-primary">
-                    Create imported form
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="empty-state">
-                <strong>No prepared source yet</strong>
-                <p>
-                  Prepare the outside form first so the importer can generate a mapped draft.
-                </p>
-              </div>
+                {sourceText ? (
+                  <form action={importFormAction} className="form-grid">
+                    <input type="hidden" name="sourceText" value={sourceText} />
+                    <label className="field">
+                      <span>Form name</span>
+                      <input name="name" type="text" defaultValue={defaultName} required />
+                    </label>
+                    <label className="field">
+                      <span>Public slug</span>
+                      <input name="slug" type="text" defaultValue={defaultSlug} required />
+                    </label>
+                    <label className="field field-full">
+                      <span>Headline</span>
+                      <input
+                        name="headline"
+                        type="text"
+                        defaultValue={`Complete the ${defaultName.toLowerCase()} without retyping every section.`}
+                        required
+                      />
+                    </label>
+                    <label className="field field-full">
+                      <span>Description</span>
+                      <textarea
+                        name="description"
+                        rows={4}
+                        defaultValue={`This form was imported from ${summary.methodLabel.toLowerCase()} and grouped into reusable sections where possible.`}
+                        required
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Accent color</span>
+                      <input name="accent" type="text" defaultValue="#5b6ee1" required />
+                    </label>
+                    <div className="field-full button-row">
+                      <button type="submit" className="button button-primary">
+                        Create imported form
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="empty-state">
+                    <strong>No prepared source yet</strong>
+                    <p>
+                      Prepare the outside form first so the importer can generate a mapped draft.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </section>
 
           <aside className="surface-card import-sidebar">
-            <span className="eyebrow">Source snapshot</span>
+            {activeMethod === "fill" ? (
+              <FillOriginalSidebar
+                familyMembers={familyMembers}
+                layoutsUnavailable={layoutsUnavailable}
+                profilesUnavailable={profilesUnavailable}
+                savedLayoutCount={savedLayouts.length}
+              />
+            ) : (
+              <>
+                <span className="eyebrow">Source snapshot</span>
             <h2>{summary.sourceTitle}</h2>
             <div className="import-source-meta">
               <div className="section-chip">
@@ -478,6 +657,8 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
                 </div>
               )}
             </div>
+              </>
+            )}
           </aside>
         </div>
       </div>
