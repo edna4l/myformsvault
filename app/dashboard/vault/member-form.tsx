@@ -1,3 +1,9 @@
+"use client";
+
+import { useMemo, useState } from "react";
+
+import type { VaultAnswerHistoryEntry } from "@/lib/forms";
+
 export type FamilyMemberFormDefaults = {
   householdName: string;
   fullName: string;
@@ -54,244 +60,197 @@ export const emptyFamilyMemberDefaults: FamilyMemberFormDefaults = {
   pickupNotes: "",
 };
 
+type FamilyMemberFieldName = keyof FamilyMemberFormDefaults;
+
+type FieldConfig = {
+  full?: boolean;
+  label: string;
+  name: FamilyMemberFieldName;
+  placeholder?: string;
+  rows?: number;
+  type?: "date" | "email" | "tel" | "text" | "textarea";
+};
+
 type FamilyMemberFormProps = {
   action: (formData: FormData) => void | Promise<void>;
   submitLabel: string;
   defaults?: FamilyMemberFormDefaults;
+  histories?: VaultAnswerHistoryEntry[];
   memberId?: string;
 };
+
+const fieldConfigs: FieldConfig[] = [
+  { label: "Household name", name: "householdName", placeholder: "Johnson family" },
+  { label: "Full name", name: "fullName", placeholder: "Mia Johnson" },
+  { label: "Relationship", name: "relationship", placeholder: "Child, guardian, sibling..." },
+  { label: "Date of birth", name: "dateOfBirth", type: "date" },
+  { label: "Email", name: "email", placeholder: "guardian@example.com", type: "email" },
+  { label: "Phone", name: "phone", placeholder: "(555) 555-0140", type: "tel" },
+  {
+    full: true,
+    label: "Street address",
+    name: "streetAddress",
+    placeholder: "123 Main St, Apartment 5",
+    rows: 3,
+    type: "textarea",
+  },
+  {
+    full: true,
+    label: "Mailing address",
+    name: "mailingAddress",
+    placeholder: "PO Box 321, Oakland, CA 94612",
+    rows: 3,
+    type: "textarea",
+  },
+  { label: "Primary language", name: "primaryLanguage", placeholder: "English" },
+  { label: "School name", name: "schoolName", placeholder: "Lakeside Elementary" },
+  { label: "Grade level", name: "gradeLevel", placeholder: "4th grade" },
+  { label: "Student ID", name: "studentId", placeholder: "204155" },
+  { label: "Teacher or counselor", name: "teacher", placeholder: "Ms. Adams" },
+  {
+    full: true,
+    label: "Allergies",
+    name: "allergies",
+    placeholder: "Peanuts, shellfish...",
+    rows: 3,
+    type: "textarea",
+  },
+  {
+    full: true,
+    label: "Medications",
+    name: "medications",
+    placeholder: "Medication names and dosage details",
+    rows: 3,
+    type: "textarea",
+  },
+  {
+    full: true,
+    label: "Conditions or medical notes",
+    name: "conditions",
+    placeholder: "Asthma action plan on file",
+    rows: 3,
+    type: "textarea",
+  },
+  { label: "Primary physician", name: "physician", placeholder: "Dr. Nguyen" },
+  { label: "Insurance provider", name: "insuranceProvider", placeholder: "Blue Shield" },
+  { label: "Member ID", name: "insuranceMemberId", placeholder: "XZW-2209431" },
+  { label: "Group number", name: "insuranceGroupNumber", placeholder: "A44291" },
+  { label: "Emergency contact name", name: "emergencyContactName", placeholder: "Dana Johnson" },
+  { label: "Emergency relationship", name: "emergencyContactRelationship", placeholder: "Parent" },
+  { label: "Emergency phone", name: "emergencyContactPhone", placeholder: "(555) 555-0111", type: "tel" },
+  {
+    full: true,
+    label: "Authorized pickup notes",
+    name: "authorizedPickup",
+    placeholder: "List approved adults or pickup instructions",
+    rows: 3,
+    type: "textarea",
+  },
+  {
+    full: true,
+    label: "Additional household notes",
+    name: "pickupNotes",
+    placeholder: "Anything staff, administrators, or providers should know",
+    rows: 3,
+    type: "textarea",
+  },
+];
+
+function formatHistoryDate(value: Date) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(value);
+}
 
 export function FamilyMemberForm({
   action,
   submitLabel,
   defaults = emptyFamilyMemberDefaults,
+  histories = [],
   memberId,
 }: FamilyMemberFormProps) {
+  const [values, setValues] = useState(defaults);
+  const historiesByField = useMemo(() => {
+    const groups = new Map<string, VaultAnswerHistoryEntry[]>();
+
+    for (const history of histories) {
+      if (!history.formFieldName) {
+        continue;
+      }
+
+      const existing = groups.get(history.formFieldName) ?? [];
+      existing.push(history);
+      groups.set(history.formFieldName, existing);
+    }
+
+    return groups;
+  }, [histories]);
+
+  function setField(name: FamilyMemberFieldName, value: string) {
+    setValues((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  }
+
+  function renderHistory(name: FamilyMemberFieldName) {
+    const entries = historiesByField.get(name) ?? [];
+
+    if (entries.length === 0) {
+      return null;
+    }
+
+    return (
+      <details className="field-history">
+        <summary>History</summary>
+        <div className="field-history-list">
+          {entries.slice(0, 6).map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className="field-history-option"
+              onClick={() => setField(name, entry.value)}
+            >
+              <strong>{entry.value}</strong>
+              <span>
+                {entry.templateName} · {formatHistoryDate(entry.createdAt)}
+              </span>
+            </button>
+          ))}
+        </div>
+      </details>
+    );
+  }
+
   return (
     <form action={action} className="form-grid">
       {memberId ? <input type="hidden" name="id" value={memberId} /> : null}
-      <label className="field">
-        <span>Household name</span>
-        <input
-          name="householdName"
-          type="text"
-          placeholder="Johnson family"
-          defaultValue={defaults.householdName}
-          required
-        />
-      </label>
-      <label className="field">
-        <span>Full name</span>
-        <input
-          name="fullName"
-          type="text"
-          placeholder="Mia Johnson"
-          defaultValue={defaults.fullName}
-          required
-        />
-      </label>
-      <label className="field">
-        <span>Relationship</span>
-        <input
-          name="relationship"
-          type="text"
-          placeholder="Child, guardian, sibling..."
-          defaultValue={defaults.relationship}
-        />
-      </label>
-      <label className="field">
-        <span>Date of birth</span>
-        <input name="dateOfBirth" type="date" defaultValue={defaults.dateOfBirth} />
-      </label>
-      <label className="field">
-        <span>Email</span>
-        <input
-          name="email"
-          type="email"
-          placeholder="guardian@example.com"
-          defaultValue={defaults.email}
-        />
-      </label>
-      <label className="field">
-        <span>Phone</span>
-        <input
-          name="phone"
-          type="tel"
-          placeholder="(555) 555-0140"
-          defaultValue={defaults.phone}
-        />
-      </label>
-      <label className="field field-full">
-        <span>Street address</span>
-        <textarea
-          name="streetAddress"
-          rows={3}
-          placeholder="123 Main St, Apartment 5"
-          defaultValue={defaults.streetAddress}
-        />
-      </label>
-      <label className="field field-full">
-        <span>Mailing address</span>
-        <textarea
-          name="mailingAddress"
-          rows={3}
-          placeholder="PO Box 321, Oakland, CA 94612"
-          defaultValue={defaults.mailingAddress}
-        />
-      </label>
-      <label className="field">
-        <span>Primary language</span>
-        <input
-          name="primaryLanguage"
-          type="text"
-          placeholder="English"
-          defaultValue={defaults.primaryLanguage}
-        />
-      </label>
-      <label className="field">
-        <span>School name</span>
-        <input
-          name="schoolName"
-          type="text"
-          placeholder="Lakeside Elementary"
-          defaultValue={defaults.schoolName}
-        />
-      </label>
-      <label className="field">
-        <span>Grade level</span>
-        <input
-          name="gradeLevel"
-          type="text"
-          placeholder="4th grade"
-          defaultValue={defaults.gradeLevel}
-        />
-      </label>
-      <label className="field">
-        <span>Student ID</span>
-        <input
-          name="studentId"
-          type="text"
-          placeholder="204155"
-          defaultValue={defaults.studentId}
-        />
-      </label>
-      <label className="field">
-        <span>Teacher or counselor</span>
-        <input
-          name="teacher"
-          type="text"
-          placeholder="Ms. Adams"
-          defaultValue={defaults.teacher}
-        />
-      </label>
-      <label className="field field-full">
-        <span>Allergies</span>
-        <textarea
-          name="allergies"
-          rows={3}
-          placeholder="Peanuts, shellfish..."
-          defaultValue={defaults.allergies}
-        />
-      </label>
-      <label className="field field-full">
-        <span>Medications</span>
-        <textarea
-          name="medications"
-          rows={3}
-          placeholder="Medication names and dosage details"
-          defaultValue={defaults.medications}
-        />
-      </label>
-      <label className="field field-full">
-        <span>Conditions or medical notes</span>
-        <textarea
-          name="conditions"
-          rows={3}
-          placeholder="Asthma action plan on file"
-          defaultValue={defaults.conditions}
-        />
-      </label>
-      <label className="field">
-        <span>Primary physician</span>
-        <input
-          name="physician"
-          type="text"
-          placeholder="Dr. Nguyen"
-          defaultValue={defaults.physician}
-        />
-      </label>
-      <label className="field">
-        <span>Insurance provider</span>
-        <input
-          name="insuranceProvider"
-          type="text"
-          placeholder="Blue Shield"
-          defaultValue={defaults.insuranceProvider}
-        />
-      </label>
-      <label className="field">
-        <span>Member ID</span>
-        <input
-          name="insuranceMemberId"
-          type="text"
-          placeholder="XZW-2209431"
-          defaultValue={defaults.insuranceMemberId}
-        />
-      </label>
-      <label className="field">
-        <span>Group number</span>
-        <input
-          name="insuranceGroupNumber"
-          type="text"
-          placeholder="A44291"
-          defaultValue={defaults.insuranceGroupNumber}
-        />
-      </label>
-      <label className="field">
-        <span>Emergency contact name</span>
-        <input
-          name="emergencyContactName"
-          type="text"
-          placeholder="Dana Johnson"
-          defaultValue={defaults.emergencyContactName}
-        />
-      </label>
-      <label className="field">
-        <span>Emergency relationship</span>
-        <input
-          name="emergencyContactRelationship"
-          type="text"
-          placeholder="Parent"
-          defaultValue={defaults.emergencyContactRelationship}
-        />
-      </label>
-      <label className="field">
-        <span>Emergency phone</span>
-        <input
-          name="emergencyContactPhone"
-          type="tel"
-          placeholder="(555) 555-0111"
-          defaultValue={defaults.emergencyContactPhone}
-        />
-      </label>
-      <label className="field field-full">
-        <span>Authorized pickup notes</span>
-        <textarea
-          name="authorizedPickup"
-          rows={3}
-          placeholder="List approved adults or pickup instructions"
-          defaultValue={defaults.authorizedPickup}
-        />
-      </label>
-      <label className="field field-full">
-        <span>Additional household notes</span>
-        <textarea
-          name="pickupNotes"
-          rows={3}
-          placeholder="Anything staff, administrators, or providers should know"
-          defaultValue={defaults.pickupNotes}
-        />
-      </label>
+      {fieldConfigs.map((field) => (
+        <label key={field.name} className={`field${field.full ? " field-full" : ""}`}>
+          <span>{field.label}</span>
+          {field.type === "textarea" ? (
+            <textarea
+              name={field.name}
+              rows={field.rows ?? 3}
+              placeholder={field.placeholder}
+              value={values[field.name]}
+              onChange={(event) => setField(field.name, event.target.value)}
+            />
+          ) : (
+            <input
+              name={field.name}
+              type={field.type ?? "text"}
+              placeholder={field.placeholder}
+              value={values[field.name]}
+              required={field.name === "householdName" || field.name === "fullName"}
+              onChange={(event) => setField(field.name, event.target.value)}
+            />
+          )}
+          {renderHistory(field.name)}
+        </label>
+      ))}
       <div className="field-full button-row">
         <button type="submit" className="button button-primary">
           {submitLabel}

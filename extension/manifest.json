@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "MyFormsVault Autofill",
+  "version": "0.1.0",
+  "description": "Fill matching web form fields from a MyFormsVault API key.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "Fill from MyFormsVault"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options.html"
+}

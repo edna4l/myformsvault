@@ -61,7 +61,7 @@ model FormTemplate {
 }
 
 model FamilyMember {
-  id            String   @id @default(cuid())
+  id            String          @id @default(cuid())
   householdName String
   fullName      String
   relationship  String?
@@ -70,9 +70,99 @@ model FamilyMember {
   medicalInfo   Json?
   insuranceInfo Json?
   emergencyInfo Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  answerHistory AnswerHistory[]
 
+  @@schema("myformsvault")
+}
+
+model Profile {
+  id            String         @id @default(cuid())
+  userId        String         @unique
+  email         String         @unique
+  fullName      String?
+  isAdmin       Boolean        @default(false) @map("is_admin")
+  plan          String         @default("free")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  subscriptions Subscription[]
+
+  @@index([isAdmin])
+  @@schema("myformsvault")
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  isAdmin   Boolean  @default(true) @map("is_admin")
+  createdAt DateTime @default(now())
+
+  @@map("admins")
+  @@schema("myformsvault")
+}
+
+model Subscription {
+  id               String    @id @default(cuid())
+  userId           String
+  profileId        String?
+  status           String    @default("trialing")
+  plan             String    @default("free")
+  amountCents      Int       @default(0)
+  interval         String    @default("month")
+  currentPeriodEnd DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  profile          Profile?  @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([userId])
+  @@schema("myformsvault")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  targetType String
+  targetId   String?
+  metadata   Json
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@schema("myformsvault")
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([keyPrefix])
+  @@schema("myformsvault")
+}
+
+model AnswerHistory {
+  id             String       @id @default(cuid())
+  familyMemberId String
+  fieldKey       String
+  fieldLabel     String
+  value          String
+  templateName   String
+  formName       String
+  createdAt      DateTime     @default(now())
+  familyMember   FamilyMember @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+
+  @@index([familyMemberId, fieldKey, createdAt(sort: Desc)])
   @@schema("myformsvault")
 }
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { DashboardSearchPanel } from "@/app/dashboard/dashboard-search-panel";
 import { getHouseholdSummaryBySlug } from "@/lib/forms";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,7 @@ export default async function HouseholdDetailPage({ params }: HouseholdDetailPag
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell workbench-shell">
       <div className="dashboard-shell">
         <div className="dashboard-heading">
           <div className="dashboard-copy">
@@ -49,16 +50,19 @@ export default async function HouseholdDetailPage({ params }: HouseholdDetailPag
               whenever a school, medical, or care form needs a more specific update.
             </p>
           </div>
-          <div className="button-row">
-            <Link href="/dashboard/vault" className="button button-secondary">
-              Back to vault
-            </Link>
-            <Link href="/dashboard/templates" className="button button-secondary">
-              Browse templates
-            </Link>
-            <Link href="/dashboard/import" className="button button-ghost">
-              Import outside form
-            </Link>
+          <div className="dashboard-header-tools">
+            <DashboardSearchPanel />
+            <div className="button-row">
+              <Link href="/dashboard/vault" className="button button-secondary">
+                Back to vault
+              </Link>
+              <Link href="/dashboard/templates" className="button button-secondary">
+                Browse templates
+              </Link>
+              <Link href="/dashboard/import" className="button button-ghost">
+                Import outside form
+              </Link>
+            </div>
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { DashboardSearchPanel } from "@/app/dashboard/dashboard-search-panel";
 import { getBaseUrl, getFamilyMembers, getFormById, getSubmissionPreview, parseSections } from "@/lib/forms";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ export default async function FormDetailPage({ params, searchParams }: FormDetai
   const sections = parseSections(form.sections ?? form.fields);
 
   return (
-    <main className="app-shell">
+    <main className="app-shell workbench-shell">
       <div className="dashboard-shell">
         <div className="dashboard-heading">
           <div className="dashboard-copy">
@@ -44,16 +45,19 @@ export default async function FormDetailPage({ params, searchParams }: FormDetai
             <h1>{form.name}</h1>
             <p>{form.description}</p>
           </div>
-          <div className="button-row">
-            <Link href={`/f/${form.slug}`} className="button button-primary">
-              Open public form
-            </Link>
-            <Link href={`/dashboard/forms/${form.id}/edit`} className="button button-secondary">
-              Edit form
-            </Link>
-            <Link href="/dashboard" className="button button-ghost">
-              Back to dashboard
-            </Link>
+          <div className="dashboard-header-tools">
+            <DashboardSearchPanel />
+            <div className="button-row">
+              <Link href={`/f/${form.slug}`} className="button button-primary">
+                Open public form
+              </Link>
+              <Link href={`/dashboard/forms/${form.id}/edit`} className="button button-secondary">
+                Edit form
+              </Link>
+              <Link href="/dashboard" className="button button-ghost">
+                Back to dashboard
+              </Link>
+            </div>
           </div>
         </div>
 

@@ -1,14 +1,31 @@
 import Link from "next/link";
 
+import { DashboardSearchPanel } from "@/app/dashboard/dashboard-search-panel";
 import { getTemplateCatalog, getTemplateCategoryLabel, parseSections } from "@/lib/forms";
+import { DownloadTemplatesZip } from "./download-templates-zip";
 
 export const dynamic = "force-dynamic";
 
 export default async function TemplateLibraryPage() {
   const templates = await getTemplateCatalog();
+  const zipTemplates = templates.map((template) => ({
+    accent: template.accent,
+    category: getTemplateCategoryLabel(template.category),
+    description: template.description,
+    name: template.name,
+    overview: template.overview,
+    sections: parseSections(template.sections).map((section) => ({
+      description: section.description,
+      fields: section.fields.map((field) => ({
+        label: field.label,
+      })),
+      title: section.title,
+    })),
+    slug: template.slug,
+  }));
 
   return (
-    <main className="app-shell">
+    <main className="app-shell workbench-shell">
       <div className="dashboard-shell">
         <div className="dashboard-heading">
           <div className="dashboard-copy">
@@ -19,13 +36,17 @@ export default async function TemplateLibraryPage() {
               instead of rebuilding each form from scratch.
             </p>
           </div>
-          <div className="button-row">
-            <Link href="/dashboard/vault" className="button button-secondary">
-              Open family vault
-            </Link>
-            <Link href="/dashboard" className="button button-ghost">
-              Back to dashboard
-            </Link>
+          <div className="dashboard-header-tools">
+            <DashboardSearchPanel />
+            <div className="button-row">
+              <DownloadTemplatesZip templates={zipTemplates} />
+              <Link href="/dashboard/vault" className="button button-secondary">
+                Open family vault
+              </Link>
+              <Link href="/dashboard" className="button button-ghost">
+                Back to dashboard
+              </Link>
+            </div>
           </div>
         </div>
 

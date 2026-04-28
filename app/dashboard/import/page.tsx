@@ -18,6 +18,7 @@ import {
   FillOriginalForm,
   type FillOriginalMemberOption,
 } from "./fill/fill-original-form";
+import { VaultTextClipper } from "./vault-text-clipper";
 
 export const dynamic = "force-dynamic";
 
@@ -241,7 +242,9 @@ type ImportPageProps = {
   searchParams: Promise<{
     draft?: string;
     error?: string;
+    fillView?: string;
     method?: string;
+    savedToVault?: string;
     sourceKind?: string;
     sourceLabel?: string;
     sourceTitle?: string;
@@ -253,8 +256,9 @@ type ImportPageProps = {
 export default async function ImportPage({ searchParams }: ImportPageProps) {
   const params = await searchParams;
   const activeMethod = normalizeImportMethod(params.method);
+  const activeFillView = params.fillView === "guide" ? "guide" : "work";
   const { familyMembers, layoutsUnavailable, profilesUnavailable, savedLayouts } =
-    activeMethod === "fill"
+    activeMethod === "fill" || Boolean(params.draft?.trim())
       ? await getFillProfileState()
       : { familyMembers: [], layoutsUnavailable: false, profilesUnavailable: false, savedLayouts: [] };
   const sourceText = params.draft?.trim()
@@ -363,18 +367,57 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
             {errorMessage}
           </div>
         ) : null}
+        {params.savedToVault === "1" ? (
+          <div className="notice success" style={{ marginTop: "1.25rem" }}>
+            Selected text was saved to the family vault.
+          </div>
+        ) : null}
 
+        {activeMethod === "fill" ? (
+          <div className="fill-workspace" style={{ marginTop: "1.25rem" }}>
+            <div className="fill-view-tabs" role="tablist" aria-label="Fill original document views">
+              <Link
+                href="/dashboard/import?method=fill"
+                role="tab"
+                aria-selected={activeFillView === "work"}
+                className={`fill-view-tab${activeFillView === "work" ? " is-active" : ""}`}
+              >
+                Work area
+              </Link>
+              <Link
+                href="/dashboard/import?method=fill&fillView=guide"
+                role="tab"
+                aria-selected={activeFillView === "guide"}
+                className={`fill-view-tab${activeFillView === "guide" ? " is-active" : ""}`}
+              >
+                Guide
+              </Link>
+            </div>
+
+            {activeFillView === "work" ? (
+              <section className="form-surface import-step-stack fill-work-surface">
+                <FillOriginalForm
+                  familyMembers={fillMemberOptions}
+                  profilesUnavailable={profilesUnavailable}
+                  savedLayouts={savedLayouts}
+                  uploadLimitLabel={uploadLimitLabel}
+                />
+              </section>
+            ) : (
+              <aside className="surface-card import-sidebar fill-info-panel">
+                <FillOriginalSidebar
+                  familyMembers={familyMembers}
+                  layoutsUnavailable={layoutsUnavailable}
+                  profilesUnavailable={profilesUnavailable}
+                  savedLayoutCount={savedLayouts.length}
+                />
+              </aside>
+            )}
+          </div>
+        ) : (
         <div className="detail-grid" style={{ marginTop: "1.25rem" }}>
           <section className="form-surface import-step-stack">
-            {activeMethod === "fill" ? (
-              <FillOriginalForm
-                familyMembers={fillMemberOptions}
-                profilesUnavailable={profilesUnavailable}
-                savedLayouts={savedLayouts}
-                uploadLimitLabel={uploadLimitLabel}
-              />
-            ) : (
-              <>
+            <>
                 <div>
                   <span className="eyebrow">Step 1</span>
                   <h2 style={{ marginTop: "0.85rem" }}>Prepare the outside form source</h2>
@@ -512,6 +555,10 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
               </p>
             </div>
 
+                {sourceText && fillMemberOptions.length > 0 ? (
+                  <VaultTextClipper familyMembers={fillMemberOptions} sourceText={sourceText} />
+                ) : null}
+
                 {sourceText ? (
                   <form action={importFormAction} className="form-grid">
                     <input type="hidden" name="sourceText" value={sourceText} />
@@ -560,19 +607,10 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
                   </div>
                 )}
               </>
-            )}
           </section>
 
           <aside className="surface-card import-sidebar">
-            {activeMethod === "fill" ? (
-              <FillOriginalSidebar
-                familyMembers={familyMembers}
-                layoutsUnavailable={layoutsUnavailable}
-                profilesUnavailable={profilesUnavailable}
-                savedLayoutCount={savedLayouts.length}
-              />
-            ) : (
-              <>
+            <>
                 <span className="eyebrow">Source snapshot</span>
             <h2>{summary.sourceTitle}</h2>
             <div className="import-source-meta">
@@ -658,9 +696,9 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
               )}
             </div>
               </>
-            )}
           </aside>
         </div>
+        )}
       </div>
     </main>
   );

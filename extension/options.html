@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MyFormsVault Autofill</title>
+    <style>
+      body {
+        width: 360px;
+        margin: 0;
+        padding: 18px;
+        color: #060817;
+        font-family: system-ui, sans-serif;
+      }
+
+      label,
+      input,
+      button {
+        display: block;
+        width: 100%;
+      }
+
+      label {
+        margin-top: 12px;
+        font-weight: 700;
+      }
+
+      input {
+        box-sizing: border-box;
+        margin-top: 6px;
+        padding: 10px;
+      }
+
+      button {
+        margin-top: 14px;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>MyFormsVault</h1>
+    <label>
+      API base URL
+      <input id="apiBaseUrl" placeholder="https://project.supabase.co/functions/v1/api-vault" />
+    </label>
+    <label>
+      API key
+      <input id="apiKey" type="password" placeholder="mfv_..." />
+    </label>
+    <button id="save">Save</button>
+    <button id="fill">Fill current page</button>
+    <p id="status"></p>
+    <script src="options.js"></script>
+  </body>
+</html>

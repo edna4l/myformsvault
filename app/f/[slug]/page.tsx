@@ -192,6 +192,7 @@ export default async function PublicFormPage({ params, searchParams }: PublicFor
 
         <form action={submitPublicFormAction} className="public-form">
           <input type="hidden" name="slug" value={form.slug} />
+          {familyMember ? <input type="hidden" name="memberId" value={familyMember.id} /> : null}
           {sections.map((section) => (
             <div key={section.id} className="public-section">
               <div className="public-section-copy">

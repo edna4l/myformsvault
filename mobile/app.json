@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "MyFormsVault",
+    "slug": "myformsvault",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "myformsvault",
+    "ios": {
+      "supportsTablet": true
+    },
+    "plugins": ["expo-camera", "expo-notifications"],
+    "extra": {
+      "supabaseUrl": "$EXPO_PUBLIC_SUPABASE_URL",
+      "supabaseAnonKey": "$EXPO_PUBLIC_SUPABASE_ANON_KEY"
+    }
+  }
+}

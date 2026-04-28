@@ -73,20 +73,24 @@ function toDraftSection(section: FormSection): CustomSectionDraft {
 export function SectionBuilder({
   catalog,
   defaultSelectedSectionIds,
-  defaultCustomSections = [],
+  defaultCustomSections,
 }: SectionBuilderProps) {
-  const [selectedIds, setSelectedIds] = useState<string[]>(defaultSelectedSectionIds);
-  const [customSections, setCustomSections] = useState<CustomSectionDraft[]>(
-    defaultCustomSections.map(toDraftSection),
+  const defaultSelectedIdsJson = JSON.stringify(defaultSelectedSectionIds);
+  const defaultCustomSectionsJson = JSON.stringify(defaultCustomSections ?? []);
+  const [selectedIds, setSelectedIds] = useState<string[]>(() =>
+    JSON.parse(defaultSelectedIdsJson),
+  );
+  const [customSections, setCustomSections] = useState<CustomSectionDraft[]>(() =>
+    (JSON.parse(defaultCustomSectionsJson) as FormSection[]).map(toDraftSection),
   );
 
   useEffect(() => {
-    setSelectedIds(defaultSelectedSectionIds);
-  }, [defaultSelectedSectionIds]);
+    setSelectedIds(JSON.parse(defaultSelectedIdsJson));
+  }, [defaultSelectedIdsJson]);
 
   useEffect(() => {
-    setCustomSections(defaultCustomSections.map(toDraftSection));
-  }, [defaultCustomSections]);
+    setCustomSections((JSON.parse(defaultCustomSectionsJson) as FormSection[]).map(toDraftSection));
+  }, [defaultCustomSectionsJson]);
 
   const toggleSection = (sectionId: string, checked: boolean) => {
     setSelectedIds((current) => {

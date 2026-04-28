@@ -34,6 +34,17 @@ export type SubmissionResponse = {
   value: string;
 };
 
+export type VaultAnswerHistoryEntry = {
+  id: string;
+  fieldKey: string;
+  fieldLabel: string;
+  formFieldName: string | null;
+  value: string;
+  templateName: string;
+  formName: string;
+  createdAt: Date;
+};
+
 export type ImportedFormBlueprint = {
   category: TemplateCategory;
   matchedSections: FormSection[];
@@ -1009,6 +1020,41 @@ export function getFamilyAutofillValues(member: FamilyMember) {
   return buildFamilyAutofillValues(member);
 }
 
+const vaultFieldFormNames: Record<string, keyof FamilySectionRecord | string> = {
+  "basic.dateOfBirth": "dateOfBirth",
+  "basic.email": "email",
+  "basic.phone": "phone",
+  "basic.streetAddress": "streetAddress",
+  "basic.mailingAddress": "mailingAddress",
+  "household.primaryLanguage": "primaryLanguage",
+  "school.schoolName": "schoolName",
+  "school.gradeLevel": "gradeLevel",
+  "school.studentId": "studentId",
+  "school.teacher": "teacher",
+  "medical.allergies": "allergies",
+  "medical.medications": "medications",
+  "medical.conditions": "conditions",
+  "medical.physician": "physician",
+  "insurance.provider": "insuranceProvider",
+  "insurance.memberId": "insuranceMemberId",
+  "insurance.groupNumber": "insuranceGroupNumber",
+  "emergency.contactName": "emergencyContactName",
+  "emergency.contactRelationship": "emergencyContactRelationship",
+  "emergency.contactPhone": "emergencyContactPhone",
+  "household.authorizedPickup": "authorizedPickup",
+  "household.pickupNotes": "pickupNotes",
+};
+
+function getVaultHistoryFieldKey(field: FormField) {
+  const key = field.autofillKey ?? field.key;
+
+  return key in vaultFieldFormNames ? key : null;
+}
+
+function getVaultHistoryFormFieldName(fieldKey: string) {
+  return vaultFieldFormNames[fieldKey] ?? null;
+}
+
 export function getBaseUrl() {
   const configuredUrl = normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL);
 
@@ -1221,7 +1267,6 @@ export async function getDashboardData() {
       orderBy: {
         updatedAt: "desc",
       },
-      take: 3,
     }),
     prisma.familyMember.findMany({
       orderBy: {
@@ -1318,6 +1363,9 @@ export async function getFormBySlug(slug: string) {
 
   return prisma.form.findUnique({
     where: { slug },
+    include: {
+      template: true,
+    },
   });
 }
 
@@ -1519,6 +1567,75 @@ export async function createSubmission(
       responses: envelope.responses,
     },
   });
+}
+
+export async function recordAnswerHistory(input: {
+  familyMemberId: string;
+  form: Form & { template?: FormTemplate | null };
+  values: Record<string, string>;
+}) {
+  const sections = parseSections((input.form.sections as Prisma.JsonValue | null | undefined) ?? input.form.fields);
+  const historyEntries = buildFieldsFromSections(sections)
+    .map((field) => {
+      const fieldKey = getVaultHistoryFieldKey(field);
+      const value = `${input.values[field.key] ?? ""}`.trim();
+
+      if (!fieldKey || !value) {
+        return null;
+      }
+
+      return {
+        familyMemberId: input.familyMemberId,
+        fieldKey,
+        fieldLabel: field.label,
+        formName: input.form.name,
+        templateName: input.form.template?.name ?? input.form.name,
+        value,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+  if (historyEntries.length === 0) {
+    return;
+  }
+
+  try {
+    await prisma.answerHistory.createMany({
+      data: historyEntries,
+    });
+  } catch (error) {
+    console.error("Unable to save answer history", error);
+  }
+}
+
+export async function getAnswerHistoryByFamilyMember(familyMemberId: string) {
+  let history: Awaited<ReturnType<typeof prisma.answerHistory.findMany>>;
+
+  try {
+    history = await prisma.answerHistory.findMany({
+      where: {
+        familyMemberId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 250,
+    });
+  } catch (error) {
+    console.error("Unable to load answer history", error);
+    return [];
+  }
+
+  return history.map((entry) => ({
+    id: entry.id,
+    createdAt: entry.createdAt,
+    fieldKey: entry.fieldKey,
+    fieldLabel: entry.fieldLabel,
+    formFieldName: getVaultHistoryFormFieldName(entry.fieldKey),
+    formName: entry.formName,
+    templateName: entry.templateName,
+    value: entry.value,
+  })) satisfies VaultAnswerHistoryEntry[];
 }
 
 export function getFormPrefillValues(form: Pick<Form, "fields" | "sections">, member: FamilyMember | null) {

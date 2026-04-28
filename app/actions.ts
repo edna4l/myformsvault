@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { Prisma } from "@/generated/prisma/client";
+import { logAuditEvent } from "@/lib/audit";
 import {
   type FormSection,
   createFamilyMember,
@@ -13,9 +14,11 @@ import {
   createLead,
   createSubmission,
   deleteFamilyMember,
+  getFamilyMemberById,
   getFormBySlug,
   normalizeSlug,
   parseSections,
+  recordAnswerHistory,
   updateForm,
   updateFamilyMember,
 } from "@/lib/forms";
@@ -89,6 +92,74 @@ const familyMemberSchema = z.object({
   authorizedPickup: z.string().trim().max(600).optional().or(z.literal("")),
   pickupNotes: z.string().trim().max(600).optional().or(z.literal("")),
 });
+
+const vaultTextSelectionSchema = z.object({
+  memberId: z.string().trim().min(1),
+  sourceText: z.string().trim().min(1).max(1200),
+  vaultField: z.enum([
+    "basic.dateOfBirth",
+    "basic.email",
+    "basic.phone",
+    "basic.streetAddress",
+    "basic.mailingAddress",
+    "household.primaryLanguage",
+    "school.schoolName",
+    "school.gradeLevel",
+    "school.studentId",
+    "school.teacher",
+    "medical.allergies",
+    "medical.medications",
+    "medical.conditions",
+    "medical.physician",
+    "insurance.provider",
+    "insurance.memberId",
+    "insurance.groupNumber",
+    "emergency.contactName",
+    "emergency.contactRelationship",
+    "emergency.contactPhone",
+    "household.authorizedPickup",
+    "household.pickupNotes",
+  ]),
+});
+
+function getJsonRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {} as Record<string, string>;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, candidate]) => [key, `${candidate ?? ""}`]),
+  );
+}
+
+function assignVaultField(
+  payload: ReturnType<typeof buildFamilyMemberPayload>,
+  fieldKey: z.infer<typeof vaultTextSelectionSchema>["vaultField"],
+  value: string,
+) {
+  if (fieldKey === "basic.dateOfBirth") payload.basicInfo.dateOfBirth = value;
+  if (fieldKey === "basic.email") payload.basicInfo.email = value;
+  if (fieldKey === "basic.phone") payload.basicInfo.phone = value;
+  if (fieldKey === "basic.streetAddress") payload.basicInfo.streetAddress = value;
+  if (fieldKey === "basic.mailingAddress") payload.basicInfo.mailingAddress = value;
+  if (fieldKey === "household.primaryLanguage") payload.basicInfo.primaryLanguage = value;
+  if (fieldKey === "school.schoolName") payload.schoolInfo.schoolName = value;
+  if (fieldKey === "school.gradeLevel") payload.schoolInfo.gradeLevel = value;
+  if (fieldKey === "school.studentId") payload.schoolInfo.studentId = value;
+  if (fieldKey === "school.teacher") payload.schoolInfo.teacher = value;
+  if (fieldKey === "medical.allergies") payload.medicalInfo.allergies = value;
+  if (fieldKey === "medical.medications") payload.medicalInfo.medications = value;
+  if (fieldKey === "medical.conditions") payload.medicalInfo.conditions = value;
+  if (fieldKey === "medical.physician") payload.medicalInfo.physician = value;
+  if (fieldKey === "insurance.provider") payload.insuranceInfo.provider = value;
+  if (fieldKey === "insurance.memberId") payload.insuranceInfo.memberId = value;
+  if (fieldKey === "insurance.groupNumber") payload.insuranceInfo.groupNumber = value;
+  if (fieldKey === "emergency.contactName") payload.emergencyInfo.contactName = value;
+  if (fieldKey === "emergency.contactRelationship") payload.emergencyInfo.contactRelationship = value;
+  if (fieldKey === "emergency.contactPhone") payload.emergencyInfo.contactPhone = value;
+  if (fieldKey === "household.authorizedPickup") payload.emergencyInfo.authorizedPickup = value;
+  if (fieldKey === "household.pickupNotes") payload.emergencyInfo.pickupNotes = value;
+}
 
 function isUniqueViolation(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -308,6 +379,15 @@ export async function createFormAction(formData: FormData) {
     });
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/templates");
+    await logAuditEvent({
+      action: "template_created",
+      metadata: {
+        slug: form.slug,
+        templateSlug,
+      },
+      targetId: form.id,
+      targetType: "form",
+    });
     redirect(`/dashboard/forms/${form.id}?created=1`);
   } catch (error) {
     if (isUniqueViolation(error)) {
@@ -390,6 +470,15 @@ export async function importFormAction(formData: FormData) {
     const form = await createImportedForm(parsed.data);
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/import");
+    await logAuditEvent({
+      action: "template_created",
+      metadata: {
+        source: "import",
+        slug: form.slug,
+      },
+      targetId: form.id,
+      targetType: "form",
+    });
     redirect(`/dashboard/forms/${form.id}?created=1`);
   } catch (error) {
     if (isUniqueViolation(error)) {
@@ -437,6 +526,14 @@ export async function createFamilyMemberAction(formData: FormData) {
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/vault");
+  await logAuditEvent({
+    action: "vault_field_updated",
+    metadata: {
+      memberName: parsed.data.fullName,
+      source: "member_created",
+    },
+    targetType: "family_member",
+  });
   redirect("/dashboard/vault?created=1");
 }
 
@@ -490,6 +587,16 @@ export async function updateFamilyMemberAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/vault");
   revalidatePath(`/dashboard/vault/${id}/edit`);
+  await logAuditEvent({
+    action: "vault_field_updated",
+    metadata: {
+      memberId: id,
+      memberName: parsed.data.fullName,
+      source: "member_edit",
+    },
+    targetId: id,
+    targetType: "family_member",
+  });
   redirect("/dashboard/vault?updated=1");
 }
 
@@ -515,8 +622,80 @@ export async function deleteFamilyMemberAction(formData: FormData) {
   redirect("/dashboard/vault?deleted=1");
 }
 
+export async function saveVaultTextSelectionAction(formData: FormData) {
+  const parsed = vaultTextSelectionSchema.safeParse({
+    memberId: formData.get("memberId"),
+    sourceText: formData.get("sourceText"),
+    vaultField: formData.get("vaultField"),
+  });
+
+  if (!parsed.success) {
+    redirect("/dashboard/import?error=validation");
+  }
+
+  const member = await getFamilyMemberById(parsed.data.memberId);
+
+  if (!member) {
+    redirect("/dashboard/import?error=profile");
+  }
+
+  const basic = getJsonRecord(member.basicInfo);
+  const school = getJsonRecord(member.schoolInfo);
+  const medical = getJsonRecord(member.medicalInfo);
+  const insurance = getJsonRecord(member.insuranceInfo);
+  const emergency = getJsonRecord(member.emergencyInfo);
+  const payload = buildFamilyMemberPayload({
+    householdName: member.householdName,
+    fullName: member.fullName,
+    relationship: member.relationship ?? "",
+    dateOfBirth: basic.dateOfBirth ?? "",
+    email: basic.email ?? "",
+    phone: basic.phone ?? "",
+    streetAddress: basic.streetAddress ?? basic.address ?? "",
+    mailingAddress: basic.mailingAddress ?? "",
+    primaryLanguage: basic.primaryLanguage ?? "",
+    schoolName: school.schoolName ?? "",
+    gradeLevel: school.gradeLevel ?? "",
+    studentId: school.studentId ?? "",
+    teacher: school.teacher ?? "",
+    allergies: medical.allergies ?? "",
+    medications: medical.medications ?? "",
+    conditions: medical.conditions ?? "",
+    physician: medical.physician ?? "",
+    insuranceProvider: insurance.provider ?? "",
+    insuranceMemberId: insurance.memberId ?? "",
+    insuranceGroupNumber: insurance.groupNumber ?? "",
+    emergencyContactName: emergency.contactName ?? "",
+    emergencyContactRelationship: emergency.contactRelationship ?? "",
+    emergencyContactPhone: emergency.contactPhone ?? "",
+    authorizedPickup: emergency.authorizedPickup ?? "",
+    pickupNotes: emergency.pickupNotes ?? "",
+  });
+
+  assignVaultField(payload, parsed.data.vaultField, parsed.data.sourceText);
+  await updateFamilyMember({
+    id: member.id,
+    ...payload,
+  });
+
+  revalidatePath("/dashboard/vault");
+  revalidatePath(`/dashboard/vault/${member.id}/edit`);
+  revalidatePath("/dashboard/import");
+  await logAuditEvent({
+    action: "vault_field_updated",
+    metadata: {
+      fieldKey: parsed.data.vaultField,
+      source: "text_selection",
+    },
+    targetId: member.id,
+    targetType: "family_member",
+  });
+  redirect("/dashboard/import?savedToVault=1");
+}
+
 export async function submitPublicFormAction(formData: FormData) {
   const slug = normalizeSlug(`${formData.get("slug") ?? ""}`);
+  const memberId = `${formData.get("memberId") ?? ""}`.trim();
   const form = await getFormBySlug(slug);
 
   if (!form) {
@@ -540,9 +719,30 @@ export async function submitPublicFormAction(formData: FormData) {
     values[field.key] = value;
   }
 
-  await createSubmission(form, values);
+  const submission = await createSubmission(form, values);
+
+  if (memberId) {
+    await recordAnswerHistory({
+      familyMemberId: memberId,
+      form,
+      values,
+    });
+  }
 
   revalidatePath("/dashboard");
+  if (memberId) {
+    revalidatePath(`/dashboard/vault/${memberId}/edit`);
+  }
   revalidatePath(`/dashboard/forms/${form.id}`);
+  await logAuditEvent({
+    action: "template_completed",
+    metadata: {
+      familyMemberId: memberId || null,
+      formName: form.name,
+      slug: form.slug,
+    },
+    targetId: submission.id,
+    targetType: "submission",
+  });
   redirect(`/f/${slug}?submitted=1`);
 }

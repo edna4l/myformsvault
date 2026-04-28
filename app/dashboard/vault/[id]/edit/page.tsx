@@ -2,11 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { deleteFamilyMemberAction, updateFamilyMemberAction } from "@/app/actions";
+import { DashboardSearchPanel } from "@/app/dashboard/dashboard-search-panel";
 import {
   FamilyMemberForm,
   type FamilyMemberFormDefaults,
 } from "@/app/dashboard/vault/member-form";
-import { getFamilyMemberById } from "@/lib/forms";
+import { getAnswerHistoryByFamilyMember, getFamilyMemberById } from "@/lib/forms";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +69,10 @@ function buildDefaults(member: NonNullable<Awaited<ReturnType<typeof getFamilyMe
 export default async function EditFamilyMemberPage({ params, searchParams }: EditFamilyMemberPageProps) {
   const route = await params;
   const query = await searchParams;
-  const member = await getFamilyMemberById(route.id);
+  const [member, histories] = await Promise.all([
+    getFamilyMemberById(route.id),
+    getAnswerHistoryByFamilyMember(route.id),
+  ]);
 
   if (!member) {
     notFound();
@@ -79,7 +83,7 @@ export default async function EditFamilyMemberPage({ params, searchParams }: Edi
     query.error === "validation" ? "A few required details still need attention before saving." : null;
 
   return (
-    <main className="app-shell">
+    <main className="app-shell workbench-shell">
       <div className="dashboard-shell">
         <div className="dashboard-heading">
           <div className="dashboard-copy">
@@ -90,13 +94,16 @@ export default async function EditFamilyMemberPage({ params, searchParams }: Edi
               vault autofill across your forms.
             </p>
           </div>
-          <div className="button-row">
-            <Link href="/dashboard/vault" className="button button-secondary">
-              Back to vault
-            </Link>
-            <Link href="/dashboard" className="button button-ghost">
-              Dashboard
-            </Link>
+          <div className="dashboard-header-tools">
+            <DashboardSearchPanel />
+            <div className="button-row">
+              <Link href="/dashboard/vault" className="button button-secondary">
+                Back to vault
+              </Link>
+              <Link href="/dashboard" className="button button-ghost">
+                Dashboard
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -119,6 +126,7 @@ export default async function EditFamilyMemberPage({ params, searchParams }: Edi
               action={updateFamilyMemberAction}
               submitLabel="Save profile changes"
               defaults={defaults}
+              histories={histories}
               memberId={member.id}
             />
           </section>

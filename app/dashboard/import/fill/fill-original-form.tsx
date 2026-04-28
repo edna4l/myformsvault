@@ -11,6 +11,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
+  type UIEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { PDFDocument } from "pdf-lib";
@@ -315,13 +316,14 @@ export function FillOriginalForm({
   savedLayouts,
   uploadLimitLabel,
 }: FillOriginalFormProps) {
-  const filledPdfCanvasRef = useRef<HTMLCanvasElement>(null);
-  const filledPreviewRef = useRef<HTMLDivElement>(null);
+  const filledPdfCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
+  const filledPageSurfaceRefs = useRef<Array<HTMLDivElement | null>>([]);
   const formRef = useRef<HTMLFormElement>(null);
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const placementDragOffsetRef = useRef<{
     historyRecorded: boolean;
     id: string;
+    pageIndex: number;
     surface: PreviewSurface;
     x: number;
     y: number;
@@ -362,6 +364,7 @@ export function FillOriginalForm({
   const activeDetailValue = getAutofillValue(activeMember, activeProfileKey);
   const pageCount = sourceKind === "pdf" ? Math.max(pdfPageCount, 1) : 1;
   const activePagePlacements = placements.filter((placement) => placement.pageIndex === activePageIndex);
+  const canPreviewOriginalPage = sourceKind === "pdf" || Boolean(imagePreviewUrl);
   const pageOptions = Array.from({ length: pageCount }, (_, index) => index);
   const selectedPlacement = placements.find((placement) => placement.id === selectedPlacementId);
   const selectedPlacementNumber = selectedPlacement
@@ -488,9 +491,7 @@ export function FillOriginalForm({
     let pdfDocument: PdfJsDocument | null = null;
 
     async function renderFilledPdfPreview() {
-      const canvas = filledPdfCanvasRef.current;
-
-      if (!canvas || !filledPdfPreview) {
+      if (!filledPdfPreview) {
         return;
       }
 
@@ -499,17 +500,32 @@ export function FillOriginalForm({
         const pdfJs = (await import("pdfjs-dist/webpack.mjs")) as unknown as PdfJsModule;
         const loadingTask = pdfJs.getDocument({ data: new Uint8Array(filledPdfPreview.bytes) });
         pdfDocument = await loadingTask.promise;
-        const page = await pdfDocument.getPage(clampPageIndex(activePageIndex, pdfDocument.numPages) + 1);
-        const viewport = page.getViewport({ scale: 1.55 });
-        const context = canvas.getContext("2d");
+        const filledPageCount = Math.max(pdfDocument.numPages, 1);
 
-        if (!context || isCancelled) {
+        if (!isCancelled && filledPageCount !== pageCount) {
+          setPdfPageCount(filledPageCount);
           return;
         }
 
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-        await page.render({ canvasContext: context, viewport }).promise;
+        for (let pageIndex = 0; pageIndex < filledPageCount; pageIndex += 1) {
+          const canvas = filledPdfCanvasRefs.current[pageIndex];
+
+          if (!canvas || isCancelled) {
+            continue;
+          }
+
+          const page = await pdfDocument.getPage(pageIndex + 1);
+          const viewport = page.getViewport({ scale: 1.55 });
+          const context = canvas.getContext("2d");
+
+          if (!context || isCancelled) {
+            continue;
+          }
+
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+          await page.render({ canvasContext: context, viewport }).promise;
+        }
 
         if (!isCancelled) {
           setFilledPreviewReady(true);
@@ -527,7 +543,7 @@ export function FillOriginalForm({
       isCancelled = true;
       void pdfDocument?.destroy?.();
     };
-  }, [activePageIndex, filledPdfPreview, isFilledPreviewFullscreen]);
+  }, [filledPdfPreview, isFilledPreviewFullscreen, pageCount]);
 
   async function inspectPdf(fileBuffer: ArrayBuffer, fieldMappings: Record<string, string>) {
     const pdfDoc = await PDFDocument.load(fileBuffer.slice(0));
@@ -675,8 +691,8 @@ export function FillOriginalForm({
     setPlacements((current) => updater(current));
   }
 
-  function createPlacementFromTool(point: { x: number; y: number }): PlacementOption | null {
-    const pageIndex = sourceKind === "pdf" ? activePageIndex : 0;
+  function createPlacementFromTool(point: { x: number; y: number }, pageIndexOverride?: number): PlacementOption | null {
+    const pageIndex = sourceKind === "pdf" ? clampPageIndex(pageIndexOverride ?? activePageIndex, pageCount) : 0;
 
     if (activePlacementTool === "text") {
       if (!activeProfileKey) {
@@ -723,20 +739,24 @@ export function FillOriginalForm({
     };
   }
 
-  function handlePlacementSurfaceClick(event: MouseEvent<HTMLDivElement>, surface: PreviewSurface) {
+  function handlePlacementSurfaceClick(
+    event: MouseEvent<HTMLDivElement>,
+    surface: PreviewSurface,
+    pageIndex = activePageIndex,
+  ) {
     const isReady = surface === "filled" ? filledPreviewReady : previewReady;
 
     if (!isReady || event.target instanceof HTMLButtonElement) {
       return;
     }
 
-    const point = getPreviewPoint(surface, event.clientX, event.clientY);
+    const point = getPreviewPoint(surface, event.clientX, event.clientY, pageIndex);
 
     if (!point) {
       return;
     }
 
-    const nextPlacement = createPlacementFromTool(point);
+    const nextPlacement = createPlacementFromTool(point, pageIndex);
 
     if (!nextPlacement) {
       return;
@@ -744,10 +764,12 @@ export function FillOriginalForm({
 
     updatePlacementsWithUndo((current) => [...current, nextPlacement]);
     setSelectedPlacementId(nextPlacement.id);
+    setActivePageIndex(nextPlacement.pageIndex);
   }
 
-  function getPreviewPoint(surface: PreviewSurface, clientX: number, clientY: number) {
-    const preview = surface === "filled" ? filledPreviewRef.current : previewRef.current;
+  function getPreviewPoint(surface: PreviewSurface, clientX: number, clientY: number, pageIndex = activePageIndex) {
+    const preview =
+      surface === "filled" ? filledPageSurfaceRefs.current[clampPageIndex(pageIndex, pageCount)] : previewRef.current;
 
     if (!preview) {
       return null;
@@ -868,6 +890,43 @@ export function FillOriginalForm({
 
       return placement?.pageIndex === nextPageIndex ? current : null;
     });
+
+    if (isFilledPreviewFullscreen) {
+      window.requestAnimationFrame(() => {
+        filledPageSurfaceRefs.current[nextPageIndex]?.scrollIntoView({ block: "center" });
+      });
+    }
+  }
+
+  function handleFilledPreviewScroll(event: UIEvent<HTMLDivElement>) {
+    const containerRect = event.currentTarget.getBoundingClientRect();
+    let nextPageIndex = activePageIndex;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    for (const pageIndex of pageOptions) {
+      const pageSurface = filledPageSurfaceRefs.current[pageIndex];
+
+      if (!pageSurface) {
+        continue;
+      }
+
+      const rect = pageSurface.getBoundingClientRect();
+
+      if (rect.bottom < containerRect.top || rect.top > containerRect.bottom) {
+        continue;
+      }
+
+      const distance = Math.abs(rect.top - containerRect.top);
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        nextPageIndex = pageIndex;
+      }
+    }
+
+    if (nextPageIndex !== activePageIndex) {
+      setActivePageIndex(nextPageIndex);
+    }
   }
 
   function updatePdfFieldMapping(fieldId: string, profileKey: string) {
@@ -1013,7 +1072,7 @@ export function FillOriginalForm({
     placement: PlacementOption,
     surface: PreviewSurface,
   ) {
-    const point = getPreviewPoint(surface, event.clientX, event.clientY);
+    const point = getPreviewPoint(surface, event.clientX, event.clientY, placement.pageIndex);
 
     event.preventDefault();
     event.stopPropagation();
@@ -1026,6 +1085,7 @@ export function FillOriginalForm({
     placementDragOffsetRef.current = {
       historyRecorded: false,
       id: placement.id,
+      pageIndex: placement.pageIndex,
       surface,
       x: placement.x - point.x,
       y: placement.y - point.y,
@@ -1040,7 +1100,7 @@ export function FillOriginalForm({
       return;
     }
 
-    const point = getPreviewPoint(dragOffset.surface, event.clientX, event.clientY);
+    const point = getPreviewPoint(dragOffset.surface, event.clientX, event.clientY, dragOffset.pageIndex);
 
     if (!point) {
       return;
@@ -1155,14 +1215,40 @@ export function FillOriginalForm({
   const filledPdfWorkspace =
     filledPdfPreview && isFilledPreviewFullscreen && typeof document !== "undefined"
       ? createPortal(
-          <div className="filled-pdf-workspace" role="dialog" aria-modal="true" aria-label="Filled PDF editor">
+          <div
+            className="filled-pdf-workspace"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Filled PDF editor"
+            onScroll={handleFilledPreviewScroll}
+          >
             <div className="filled-pdf-workspace-header">
-              <div>
+              <div className="filled-pdf-workspace-title">
                 <span className="eyebrow">Filled PDF</span>
-                <h2 style={{ marginTop: "0.6rem" }}>{filledPdfPreview.fileName}</h2>
+                <h2>{filledPdfPreview.fileName}</h2>
+                <span className="filled-pdf-workspace-status">
+                  Page {activePageIndex + 1} of {pageCount} · {activePagePlacements.length} placement
+                  {activePagePlacements.length === 1 ? "" : "s"} on this page · {placements.length} total
+                </span>
               </div>
-              <div className="placement-toolbar">
-                <div className="placement-tool-group" aria-label="Placement tool">
+
+              <div className="filled-pdf-workspace-controls">
+                <label className="field placement-field-picker filled-pdf-field-picker">
+                  <span>Detail</span>
+                  <select
+                    disabled={activePlacementTool !== "text"}
+                    value={activeProfileKey}
+                    onChange={(event) => setActiveProfileKey(event.target.value)}
+                  >
+                    {fillProfileDescriptors.map((descriptor) => (
+                      <option key={descriptor.key} value={descriptor.key}>
+                        {getDescriptorOptionLabel(descriptor.key, activeMember)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="placement-tool-group filled-pdf-tool-controls" aria-label="Placement tool">
                   {placementTools.map((tool) => (
                     <button
                       key={tool.id}
@@ -1175,114 +1261,114 @@ export function FillOriginalForm({
                     </button>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  className="button button-ghost placement-toolbar-button"
-                  disabled={undoDepth === 0}
-                  onClick={undoLastPlacementEdit}
-                >
-                  Undo
-                </button>
-                {selectedPlacement ? (
+
+                <div className="filled-pdf-page-controls">
+                  <div className="placement-page-actions filled-pdf-page-actions">
+                    <button
+                      type="button"
+                      className="button button-ghost placement-page-button"
+                      disabled={activePageIndex === 0}
+                      onClick={() => goToPage(activePageIndex - 1)}
+                    >
+                      Prev
+                    </button>
+                    <label className="field placement-page-picker filled-pdf-page-picker">
+                      <span>Page</span>
+                      <select value={activePageIndex} onChange={(event) => goToPage(Number(event.target.value))}>
+                        {pageOptions.map((pageIndex) => (
+                          <option key={pageIndex} value={pageIndex}>
+                            Page {pageIndex + 1}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="button button-ghost placement-page-button"
+                      disabled={activePageIndex >= pageCount - 1}
+                      onClick={() => goToPage(activePageIndex + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+
+                <div className="filled-pdf-action-controls">
                   <button
                     type="button"
                     className="button button-ghost placement-toolbar-button"
-                    onClick={() => removePlacement(selectedPlacement.id)}
+                    disabled={undoDepth === 0}
+                    onClick={undoLastPlacementEdit}
                   >
-                    Remove selected
+                    Undo
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="button button-secondary placement-toolbar-button"
-                  disabled={isInspecting || isSubmitting}
-                  onClick={submitFromWorkspace}
-                >
-                  {isSubmitting ? "Updating..." : "Update PDF"}
-                </button>
-                <a
-                  className="button button-primary placement-toolbar-button"
-                  href={filledPdfPreview.url}
-                  download={filledPdfPreview.fileName}
-                >
-                  Download PDF
-                </a>
-                <button
-                  type="button"
-                  className="button button-ghost placement-toolbar-button"
-                  onClick={() => setIsFilledPreviewFullscreen(false)}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-
-            <div className="placement-editor-controls">
-              <label className="field placement-field-picker">
-                <span>Detail to place</span>
-                <select
-                  disabled={activePlacementTool !== "text"}
-                  value={activeProfileKey}
-                  onChange={(event) => setActiveProfileKey(event.target.value)}
-                >
-                  {fillProfileDescriptors.map((descriptor) => (
-                    <option key={descriptor.key} value={descriptor.key}>
-                      {getDescriptorOptionLabel(descriptor.key, activeMember)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="placement-page-bar">
-              <div className="placement-page-summary">
-                <strong>
-                  Page {activePageIndex + 1} of {pageCount}
-                </strong>
-                <span>
-                  {activePagePlacements.length} placement{activePagePlacements.length === 1 ? "" : "s"} on this page ·{" "}
-                  {placements.length} total
-                </span>
-              </div>
-              <div className="placement-page-actions">
-                <button
-                  type="button"
-                  className="button button-ghost placement-page-button"
-                  disabled={activePageIndex === 0}
-                  onClick={() => goToPage(activePageIndex - 1)}
-                >
-                  Previous
-                </button>
-                <label className="field placement-page-picker">
-                  <span>Preview page</span>
-                  <select value={activePageIndex} onChange={(event) => goToPage(Number(event.target.value))}>
-                    {pageOptions.map((pageIndex) => (
-                      <option key={pageIndex} value={pageIndex}>
-                        Page {pageIndex + 1}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="button button-ghost placement-page-button"
-                  disabled={activePageIndex >= pageCount - 1}
-                  onClick={() => goToPage(activePageIndex + 1)}
-                >
-                  Next
-                </button>
+                  {selectedPlacement ? (
+                    <button
+                      type="button"
+                      className="button button-ghost placement-toolbar-button"
+                      onClick={() => removePlacement(selectedPlacement.id)}
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="button button-secondary placement-toolbar-button"
+                    disabled={isInspecting || isSubmitting}
+                    onClick={submitFromWorkspace}
+                  >
+                    {isSubmitting ? "Updating..." : "Update"}
+                  </button>
+                  <a
+                    className="button button-primary placement-toolbar-button"
+                    href={filledPdfPreview.url}
+                    download={filledPdfPreview.fileName}
+                  >
+                    Download
+                  </a>
+                  <button
+                    type="button"
+                    className="button button-ghost placement-toolbar-button"
+                    onClick={() => setIsFilledPreviewFullscreen(false)}
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
 
             <div
-              ref={filledPreviewRef}
               className={`filled-pdf-edit-preview placement-tool-${activePlacementTool}${
                 filledPreviewReady ? "" : " is-loading"
               }`}
-              onClick={(event) => handlePlacementSurfaceClick(event, "filled")}
             >
-              <canvas ref={filledPdfCanvasRef} />
-              {activePagePlacements.map((placement) => renderPlacementMarker(placement, "filled"))}
+              <div className="filled-pdf-document">
+                {pageOptions.map((pageIndex) => {
+                  const pagePlacements = placements.filter((placement) => placement.pageIndex === pageIndex);
+
+                  return (
+                    <div
+                      key={pageIndex}
+                      className={`filled-pdf-page-frame${pageIndex === activePageIndex ? " is-active" : ""}`}
+                    >
+                      <div
+                        ref={(element) => {
+                          filledPageSurfaceRefs.current[pageIndex] = element;
+                        }}
+                        className="placement-page-surface"
+                        onClick={(event) => handlePlacementSurfaceClick(event, "filled", pageIndex)}
+                      >
+                        <canvas
+                          ref={(element) => {
+                            filledPdfCanvasRefs.current[pageIndex] = element;
+                          }}
+                        />
+                        {pagePlacements.map((placement) => renderPlacementMarker(placement, "filled"))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>,
           document.body,
@@ -1646,17 +1732,27 @@ export function FillOriginalForm({
               ) : null}
 
               <div
-                ref={previewRef}
                 className={`placement-preview placement-tool-${activePlacementTool}${previewReady ? "" : " is-loading"}`}
-                onClick={(event) => handlePlacementSurfaceClick(event, "original")}
               >
-                {sourceKind === "pdf" ? <canvas ref={pdfCanvasRef} /> : null}
-                {sourceKind === "image" && imagePreviewUrl ? (
-                  // Blob previews cannot use next/image because they are local object URLs.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={imagePreviewUrl} alt="Uploaded original form preview" onLoad={() => setPreviewReady(true)} />
+                {canPreviewOriginalPage ? (
+                  <div
+                    ref={previewRef}
+                    className="placement-page-surface"
+                    onClick={(event) => handlePlacementSurfaceClick(event, "original")}
+                  >
+                    {sourceKind === "pdf" ? <canvas ref={pdfCanvasRef} /> : null}
+                    {sourceKind === "image" && imagePreviewUrl ? (
+                      // Blob previews cannot use next/image because they are local object URLs.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={imagePreviewUrl}
+                        alt="Uploaded original form preview"
+                        onLoad={() => setPreviewReady(true)}
+                      />
+                    ) : null}
+                    {activePagePlacements.map((placement) => renderPlacementMarker(placement, "original"))}
+                  </div>
                 ) : null}
-                {activePagePlacements.map((placement) => renderPlacementMarker(placement, "original"))}
               </div>
 
               {selectedPlacement ? (
