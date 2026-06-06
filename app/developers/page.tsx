@@ -1,12 +1,14 @@
 import Link from "next/link";
 
+import { SignOutButton } from "@/app/auth/sign-out-button";
 import { DeveloperApiKeyPanel } from "@/app/developers/developer-api-key-panel";
 import { getCurrentUserApiKeys } from "@/lib/api-keys";
+import { getCurrentUserContext } from "@/lib/auth-context";
 
 export const dynamic = "force-dynamic";
 
 export default async function DevelopersPage() {
-  const apiKeys = await getCurrentUserApiKeys();
+  const [apiKeys, user] = await Promise.all([getCurrentUserApiKeys(), getCurrentUserContext()]);
 
   return (
     <main className="app-shell workbench-shell">
@@ -27,7 +29,11 @@ export default async function DevelopersPage() {
             <Link href="/dashboard" className="button button-secondary">
               Dashboard
             </Link>
+            <SignOutButton />
           </div>
+          {user.email ? (
+            <p className="signed-in-note">Signed in as {user.email}</p>
+          ) : null}
         </div>
 
         <div className="detail-grid">

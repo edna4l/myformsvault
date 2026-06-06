@@ -1151,6 +1151,12 @@ textarea {
   margin-top: 1rem;
 }
 
+.signed-in-note {
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--ink-700);
+}
+
 .calendar-legend {
   display: flex;
   flex-wrap: wrap;
