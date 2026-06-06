@@ -117,6 +117,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               <Link href="/dashboard/security" className="button button-secondary">
                 Security
               </Link>
+              <Link href="/developers" className="button button-secondary">
+                Developers
+              </Link>
               <Link href="/" className="button button-ghost">
                 View homepage
               </Link>
