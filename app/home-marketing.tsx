@@ -591,7 +591,7 @@ export default function HomeMarketing({
           <div className="marketing-hero-copy">
             <span className="marketing-badge">
               <MarketingIcon icon="spark" className="marketing-inline-icon" />
-              Built around the current product direction
+              Built for families, schools, and care teams
             </span>
 
             <h1>
@@ -647,7 +647,7 @@ export default function HomeMarketing({
               </span>
               <span>
                 <MarketingIcon icon="check" className="marketing-proof-icon" />
-                Preview-ready dashboard links
+                Direct links to your live dashboard
               </span>
             </div>
 
