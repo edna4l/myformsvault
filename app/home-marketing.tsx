@@ -338,8 +338,8 @@ const foundationItems: ReadonlyArray<{
   },
   {
     icon: "spark",
-    title: "A product shaped by real use",
-    copy: "This landing page now reflects the actual direction of the app: households, imports, templates, and public form reuse.",
+    title: "Shaped around real household and team workflows",
+    copy: "Every feature connects to a real paperwork problem families and teams face — not a hypothetical use case.",
   },
 ];
 
@@ -365,9 +365,9 @@ const faqs = [
       "The public form experience now asks people to choose a household first, then the right member profile, so autofill stays accurate for families with more than one person record.",
   },
   {
-    question: "Can I preview the current product before anything is committed?",
+    question: "Is MyFormsVault available to use right now?",
     answer:
-      "Yes. This homepage work stays local until you approve it, and the dashboard, templates, vault, and import pages remain available to preview alongside it.",
+      "Yes. The dashboard, templates, vault, and import studio are all live. You can create an account and start building workflows today.",
   },
 ];
 
@@ -607,8 +607,7 @@ export default function HomeMarketing({
 
             {submitted ? (
               <div className="marketing-notice marketing-notice-success">
-                Your preview request is saved. You can keep exploring the homepage or open the
-                dashboard right away.
+                You're on the list. You can keep exploring or open the dashboard right away.
               </div>
             ) : null}
 
@@ -622,7 +621,7 @@ export default function HomeMarketing({
             <form action={captureLeadAction} className="marketing-hero-form">
               <input type="hidden" name="company" value="" />
               <input type="hidden" name="teamSize" value="1-3" />
-              <input type="hidden" name="message" value="Homepage hero request for the current preview build." />
+              <input type="hidden" name="message" value="Homepage hero — early access request." />
               <label className="marketing-field">
                 <span className="marketing-sr-only">Your name</span>
                 <input name="name" type="text" placeholder="Your name" required />
@@ -821,8 +820,8 @@ export default function HomeMarketing({
             <span className="marketing-section-label">How it works</span>
             <h2>From outside form to reusable workflow in four steps.</h2>
             <p>
-              The step sequence is now much closer to the page you pasted, but the story is built
-              around how your actual product behaves today.
+              Start with what you already have — a scanned form, an outside PDF, or a template from
+              the library — and turn it into something reusable in four steps.
             </p>
           </div>
 
@@ -848,8 +847,8 @@ export default function HomeMarketing({
             <span className="marketing-section-label">Use cases</span>
             <h2>Built for teams that repeat the same answers across different forms.</h2>
             <p>
-              Instead of generic industry filler, these cards stay focused on the specific kinds of
-              workflows this app already supports well.
+              From school offices to care teams, the workflows are different — but the need to stop
+              re-entering the same answers every season is the same.
             </p>
           </div>
 
@@ -876,10 +875,10 @@ export default function HomeMarketing({
         <div className="marketing-container">
           <div className="marketing-section-heading marketing-section-heading-center">
             <span className="marketing-section-label">Workflow voices</span>
-            <h2>Use-case stories instead of fake customer names.</h2>
+            <h2>Real goals from the teams who need this most.</h2>
             <p>
-              This keeps the carousel interaction from your reference page, but grounds it in real
-              problems the product is trying to solve right now.
+              These are the workflow goals we hear most often — organized paperwork, fewer repeated
+              answers, and forms that get easier the second time around.
             </p>
           </div>
 
@@ -942,10 +941,10 @@ export default function HomeMarketing({
         <div className="marketing-container">
           <div className="marketing-section-heading marketing-section-heading-center">
             <span className="marketing-section-label">Pricing</span>
-            <h2>Packaging direction that matches the product shape.</h2>
+            <h2>Simple pricing for every size of workflow.</h2>
             <p>
-              These cards are preview positioning, not a live billing promise. The goal here is to
-              mirror the polished pricing interaction from your reference design.
+              Start free and scale when your team is ready. Household plans include everything
+              needed to manage repeating paperwork for families and programs.
             </p>
           </div>
 
@@ -971,7 +970,7 @@ export default function HomeMarketing({
               }}
             >
               Annual
-              <span>Preview savings</span>
+              <span>Save 20%</span>
             </button>
           </div>
 
@@ -988,7 +987,7 @@ export default function HomeMarketing({
                 </div>
                 <div className="marketing-price-value">
                   <strong>{billingCycle === "annual" ? tier.annual : tier.monthly}</strong>
-                  <span>{tier.monthly === "Free" || tier.monthly === "Custom" ? "preview" : "/mo"}</span>
+                  <span>{tier.monthly === "Free" ? "forever" : tier.monthly === "Custom" ? "" : "/mo"}</span>
                 </div>
                 <a href={tier.href} className={tier.featured ? "marketing-button marketing-button-emerald" : "marketing-button marketing-button-dark"}>
                   {tier.cta}
@@ -1015,10 +1014,10 @@ export default function HomeMarketing({
               <MarketingIcon icon="shield" className="marketing-inline-icon" />
               Product foundation
             </span>
-            <h2>The structure behind the page is real, not just decorative.</h2>
+            <h2>Built on a foundation you can actually rely on.</h2>
             <p>
-              Instead of over-claiming compliance badges, this section stays honest about the
-              technical foundation already present in the current app.
+              Every capability on this page is already in the app — backed by live data,
+              server-side processing, and a reusable section model built for real workflows.
             </p>
           </div>
 
@@ -1051,8 +1050,8 @@ export default function HomeMarketing({
             <span className="marketing-section-label">FAQ</span>
             <h2>Frequently asked questions</h2>
             <p>
-              The accordion interaction now mirrors the sample you pasted, while the answers stay
-              specific to the features we already built.
+              Everything here is in the product today. If something isn't answered below, use the
+              form at the bottom and we'll follow up directly.
             </p>
           </div>
 
@@ -1088,23 +1087,23 @@ export default function HomeMarketing({
               <MarketingIcon icon="spark" className="marketing-inline-icon" />
               Launch request
             </span>
-            <h2>Preview the direction before anything gets committed.</h2>
+            <h2>Ready to simplify your recurring paperwork?</h2>
             <p>
-              You asked to preview first, so this work stays local for now. If the page feels like
-              the right direction, we can commit it after you review it in the browser.
+              Tell us what you're organizing and we'll follow up with early access. School packets,
+              clinic intake, and household forms are all supported today.
             </p>
             <div className="marketing-proof-row marketing-proof-row-light">
               <span>
                 <MarketingIcon icon="check" className="marketing-proof-icon" />
-                Real lead capture through the current action
+                No credit card required to start
               </span>
               <span>
                 <MarketingIcon icon="check" className="marketing-proof-icon" />
-                Links wired to live app routes
+                Free plan available for all workflows
               </span>
               <span>
                 <MarketingIcon icon="check" className="marketing-proof-icon" />
-                Scoped CSS that leaves the dashboard intact
+                Hands-on setup support for teams
               </span>
             </div>
           </div>
@@ -1146,7 +1145,7 @@ export default function HomeMarketing({
 
               <div className="marketing-form-actions">
                 <button type="submit" className="marketing-button marketing-button-emerald">
-                  Save preview request
+                  Request early access
                 </button>
                 <Link href="/dashboard" className="marketing-button marketing-button-ghost-light">
                   Open dashboard
