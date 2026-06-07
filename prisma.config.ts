@@ -3,7 +3,6 @@ import { defineConfig } from "prisma/config";
 
 loadEnvConfig(process.cwd());
 
-const databaseUrl = process.env.DATABASE_URL || process.env.DIRECT_URL;
 const installTimeDatabaseUrl =
   "postgresql://prisma:prisma@localhost:5432/myformsvault?schema=public";
 
@@ -13,6 +12,7 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: databaseUrl || installTimeDatabaseUrl,
+    url: process.env.DATABASE_URL || process.env.DIRECT_URL || installTimeDatabaseUrl,
+    directUrl: process.env.DIRECT_URL || process.env.DATABASE_URL || installTimeDatabaseUrl,
   },
 });
