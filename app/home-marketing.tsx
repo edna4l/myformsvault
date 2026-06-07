@@ -744,10 +744,10 @@ export default function HomeMarketing({
         <div className="marketing-container">
           <div className="marketing-section-heading">
             <span className="marketing-section-label">Features</span>
-            <h2>Everything the current build is growing toward, in one cleaner surface.</h2>
+            <h2>Everything you need for repeated paperwork, in one place.</h2>
             <p>
-              This version follows the structure of your pasted design, but keeps the content tied
-              to the real product: imports, vault records, templates, and reusable public forms.
+              Import outside forms, store reusable household records, build templates, and collect
+              responses — without bouncing between separate tools to do it.
             </p>
           </div>
 
@@ -771,8 +771,8 @@ export default function HomeMarketing({
             <span className="marketing-section-label">Templates</span>
             <h2>Start from a real workflow, then keep shaping it.</h2>
             <p>
-              The gallery and filter interaction now mimic the landing-page reference while routing
-              into your actual templates, vault, and import tools.
+              Browse by category or start from any workflow — each template routes directly into the
+              live app where you can edit, import, and publish.
             </p>
           </div>
 
